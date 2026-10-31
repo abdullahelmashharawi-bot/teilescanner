@@ -1,6 +1,6 @@
 // Speichert die App auf dem Handy, damit sie auch ohne Internet startet.
-const CACHE = 'teilescanner-v1';
-const FILES = ['./', 'index.html', 'matcher.js', 'ocr-worker.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+const CACHE = 'teilescanner-v2';
+const FILES = ['./', 'index.html', 'matcher.js', 'sync.js', 'brands.js', 'ocr-worker.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'tesseract-core-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm.js', 'eng-data.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

@@ -7,11 +7,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Teile-Scanner">
+<meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Teile-Scanner</title>
 <style>
+
   :root {
     --bg: #111418; --panel: #1b1f25; --panel2: #242a32; --line: #313843;
     --text: #f2f4f7; --muted: #9aa4b2; --accent: #ff7a1a; --ok: #2fbf71; --warn: #f2c94c; --bad: #ef5350;
@@ -43,7 +45,7 @@
   .row > * { flex: 1; }
   .muted { color: var(--muted); }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
-  input[type=text], textarea, select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  input[type=text], input[type=tel], input[type=password], textarea, select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
     border-radius: 10px; padding: 12px; font-size: 16px; font-family: inherit; }
   textarea { min-height: 110px; resize: vertical; }
   label.f { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
@@ -87,6 +89,18 @@
   .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
   .toolbar input { flex: 1; }
 
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 999px; padding: 8px 12px; font-size: 14px; }
+  .chip.on { background: var(--accent); color: #1a0d00; border-color: var(--accent); font-weight: 700; }
+  .datebar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .datebar .arrow { flex: none; width: 52px; height: 52px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 26px; font-weight: 700; }
+  .datebar .arrow:disabled { opacity: .3; }
+  .datebar .dmid { flex: 1; position: relative; text-align: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; cursor: pointer; }
+  .datebar .dmain { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .datebar .dsub { font-size: 12px; color: var(--muted); }
+  .datebar input[type=date] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; }
+  #scanDay { font-size: 14px; color: var(--muted); margin: 0 2px 10px; cursor: pointer; }
+  #scanDay b { color: var(--text); }
   table.prev { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
   table.prev td, table.prev th { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
   table.prev th { color: var(--muted); font-weight: 600; }
@@ -97,17 +111,108 @@
   @keyframes flash { from { background: rgba(47,191,113,.35); } to { background: var(--panel); } }
   [hidden] { display: none !important; }
   .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; left: -9999px; }
+  .hright { display: flex; align-items: center; gap: 10px; }
+  #syncDot { cursor: pointer; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  #syncDot.ok { background: var(--ok); } #syncDot.busy { background: var(--warn); } #syncDot.err { background: var(--bad); }
+  .owners { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+  .owners .chip { flex: none; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--panel2); color: var(--accent); border: 1px solid var(--line); vertical-align: middle; margin-left: 6px; }
+  #result .kunde .own { color: var(--accent); font-size: .62em; white-space: nowrap; }
+  #result .learn { font-size: 14px; color: var(--muted); margin-top: 4px; }
+  #result .thumb { float: right; width: 92px; height: 92px; object-fit: cover; border-radius: 10px; margin: 0 0 8px 10px; border: 1px solid var(--line); }
+  .item .th { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; flex: none; border: 1px solid var(--line); background: var(--panel2); }
+  .item .who { font-size: 12px; color: var(--ok); }
+  .item .mk { font-size: 12px; color: var(--accent); font-weight: 700; margin-left: 6px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button { flex: 1; }
+  .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; word-break: break-all; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; user-select: all; }
+  .lrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .lrow:first-of-type { border-top: 0; }
+  .ok-msg { color: var(--ok); } .err-msg { color: var(--bad); }
+  #result.warn { border-color: var(--bad); }
+  #result.warn .kunde { color: var(--bad); font-size: 30px; }
+  #result.assign { border-color: var(--warn); }
+  #result .pick { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; margin-top: 8px; }
+  #result .pick button { text-align: left; justify-content: flex-start; }
+  .flag.check { background: var(--warn); }
+  #modeBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #6d3fd1; color: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-weight: 800; }
+  #modeBar .btn { background: rgba(255,255,255,.18); color: #fff; }
+  #result.ret { border-color: #8b5cf6; }
+  #result.ret .kunde .own { color: #b49cff; }
+  .btn.ret { background: #8b5cf6; color: #fff; }
+  .reasons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .rtag { font-size: 11px; font-weight: 800; color: #b49cff; border: 1px solid #6d3fd1; border-radius: 6px; padding: 1px 6px; margin-left: 6px; }
+  .ritem { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-top: 1px solid var(--line); }
+  .ritem .nr { font-weight: 700; } .ritem .bz { font-size: 14px; color: var(--muted); }
+  .ritem .x { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 20px; padding: 0 4px; }
+  .fbox { border-radius: 12px; padding: 10px 12px; margin: 0 0 4px; font-weight: 700; }
+  .fbox.ok { background: rgba(47,191,113,.16); color: #7ee2a8; border: 1px solid var(--ok); }
+  .fbox.soon { background: rgba(242,201,76,.14); color: var(--warn); border: 1px solid var(--warn); }
+  .fbox.late { background: rgba(239,83,80,.16); color: #ff8a87; border: 1px solid var(--bad); }
+  .fbox.unk { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+  .fbox .big { font-size: 20px; font-weight: 800; display: block; }
+  #result.ret.late { border-color: var(--bad); } #result.ret.ok { border-color: var(--ok); } #result.ret.soon { border-color: var(--warn); }
+  .allbtn { border: 1px solid var(--ok); background: transparent; color: var(--ok); border-radius: 10px; width: 40px; height: 34px; font-size: 18px; font-weight: 800; margin-left: 10px; flex: none; }
+  .khead .r { display: flex; align-items: center; }
+  .ftag { font-size: 12px; } .ftag.ok { color: var(--ok); } .ftag.late { color: var(--bad); font-weight: 700; } .ftag.unk { color: var(--muted); }
+  .hobtn { border: 1px solid var(--line); background: var(--panel2); color: var(--text); border-radius: 10px; height: 34px; padding: 0 8px; font-size: 16px; margin-left: 8px; flex: none; }
+  .hobtn.has { border-color: var(--ok); }
+  #photoDlg img { width: 100%; border-radius: 12px; max-height: 60vh; object-fit: contain; background: #000; }
+  #choiceBtns { display: flex; flex-direction: column; gap: 8px; }
+  .kname { cursor: pointer; text-decoration: underline dotted rgba(255,255,255,.35); text-underline-offset: 4px; }
+  .mapbtn { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 10px; height: 34px; padding: 0 8px; font-size: 16px; margin-left: 8px; flex: none; }
+  #kDlg .box { max-height: 92vh; overflow-y: auto; }
+  .kf { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+  .kph { background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+  .kph img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; display: block; background: #000; }
+  .kph input { margin-top: 6px; }
+  .gpsinfo { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  #routeDlg img { width: 100%; max-height: 40vh; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
+  #dlg, #choiceDlg { z-index: 40; } #photoDlg, #routeDlg { z-index: 30; } #kDlg { z-index: 20; }
+  .stand { font-size: 12px; color: var(--muted); margin: -4px 2px 10px; }
+  .stand .old { color: var(--warn); font-weight: 700; }
+  #shareBox { white-space: pre-wrap; font-size: 14px; max-height: 45vh; overflow-y: auto; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
+  body.setup nav, body.setup header .hright { display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>Teile<span>-</span>Scanner</h1>
-  <div id="progress"></div>
+  <div class="hright"><div id="progress"></div><div id="syncDot" title="Synchronisation"></div></div>
 </header>
 
 <main>
+  <!-- EINRICHTUNG -->
+  <section id="v-setup">
+    <div class="card">
+      <h2>Willkommen 👋</h2>
+      <div class="muted" style="font-size:14px">Die Listen sind privat und verschlüsselt. Zum Verbinden brauchst du den Einladungscode und das Passwort.</div>
+    </div>
+    <div class="tabs"><button class="btn small" id="tJoin">Beitreten</button><button class="btn small ghost" id="tNew">Neu einrichten</button></div>
+    <div class="card" id="joinCard">
+      <label class="f">Einladungscode</label><textarea id="jCode" placeholder="TS1.…" style="min-height:80px"></textarea>
+      <label class="f">Passwort</label><input type="password" id="jPw" autocomplete="current-password">
+      <label class="f">Dein Name (steht bei deinen Haken)</label><input type="text" id="jName" placeholder="z. B. Abdullah">
+      <button class="btn primary" style="width:100%;margin-top:14px" id="jGo">Verbinden</button>
+      <div id="jMsg" style="margin-top:10px"></div>
+    </div>
+    <div class="card" id="newCard" hidden>
+      <div class="muted" style="font-size:14px">Nur einmal nötig – danach treten alle anderen mit dem Einladungscode bei.</div>
+      <label class="f">Privates Daten-Repository (Name/Repository)</label><input type="text" id="nRepo" value="abdullahelmashharawi-bot/teilescanner-daten" autocapitalize="off" autocomplete="off">
+      <label class="f">GitHub-Token</label><input type="password" id="nTok" placeholder="github_pat_…" autocomplete="off">
+      <label class="f">Gemeinsames Passwort</label><input type="password" id="nPw" autocomplete="new-password">
+      <label class="f">Passwort wiederholen</label><input type="password" id="nPw2" autocomplete="new-password">
+      <label class="f">Dein Name</label><input type="text" id="nName" placeholder="z. B. Abdullah">
+      <button class="btn primary" style="width:100%;margin-top:14px" id="nGo">Einrichten</button>
+      <div id="nMsg" style="margin-top:10px"></div>
+    </div>
+  </section>
+
   <!-- SCANNEN -->
-  <section id="v-scan" class="active">
+  <section id="v-scan">
+    <div id="modeBar" hidden><span>↩ RETOURE-MODUS</span><button class="btn small" id="modeEnd">Beenden</button></div>
+    <div id="scanDay"></div>
+    <div class="stand" id="stand1"></div>
     <div class="cam" id="cam">
       <video id="video" playsinline muted hidden></video>
       <div class="frame" id="frame" hidden></div>
@@ -118,11 +223,8 @@
         <button class="btn primary" id="startCam">Kamera starten</button>
       </div>
     </div>
-
     <div id="status"></div>
-
     <div id="result" hidden></div>
-
     <div class="row" style="margin-top:6px">
       <button class="btn primary" id="photoBtn">📷 Foto machen</button>
       <button class="btn" id="galleryBtn">🖼️ Aus Galerie</button>
@@ -138,50 +240,86 @@
 
   <!-- KUNDEN -->
   <section id="v-kunden">
+    <div class="datebar">
+      <button class="arrow" id="dPrev" aria-label="Einen Tag zurück">‹</button>
+      <div class="dmid"><div class="dmain" id="dText"></div><div class="dsub" id="dSub"></div><input type="date" id="dPick" aria-label="Datum wählen"></div>
+      <button class="arrow" id="dNext" aria-label="Einen Tag vor">›</button>
+    </div>
+    <div class="stand" id="stand2"></div>
+    <div class="owners" id="owners"></div>
     <div class="toolbar">
       <input type="text" id="filter" placeholder="Kunde oder Nummer suchen">
       <button class="btn small ghost" id="toggleOpen">Nur offene</button>
     </div>
     <div id="kundenList"></div>
+    <button class="btn" style="width:100%;margin-top:6px" id="shareOpen">📋 Offene Teile als Nachricht</button>
+  </section>
+
+  <!-- RETOURE -->
+  <section id="v-retoure">
+    <button class="btn ret" style="width:100%;font-size:18px;padding:16px" id="retScan">↩ Retoure scannen</button>
+    <div class="muted" style="font-size:13px;margin:8px 2px 12px">Teil scannen – die App findet in allen Listen, welcher Kunde es wann bestellt hat.</div>
+    <div class="chips" id="retDays" style="margin-bottom:10px"></div>
+    <div class="owners" id="retOwners"></div>
+    <div id="retList"></div>
+    <button class="btn" style="width:100%;margin-top:6px" id="retShare">📋 Retouren als Nachricht</button>
   </section>
 
   <!-- LISTE -->
   <section id="v-liste">
     <div class="card">
-      <h2>Liste laden</h2>
-      <div class="muted" style="font-size:14px;margin-bottom:10px">Excel-Datei (.xlsx) oder CSV wählen – oder in Excel die Zeilen markieren, kopieren und unten einfügen.</div>
-      <button class="btn primary" style="width:100%" id="fileBtn">Excel / CSV auswählen</button>
-      <input type="file" id="fileIn" class="vh" accept=".xlsx,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
-      <label class="f" for="pasteIn">…oder hier einfügen</label>
+      <h2>Listen im Pool</h2>
+      <div id="listsBox" class="muted">Noch keine Liste hochgeladen.</div>
+    </div>
+
+    <div class="card">
+      <h2>Liste hochladen</h2>
+      <div class="muted" style="font-size:14px;margin-bottom:10px">Die ganze Tabelle (.ods, .xlsx oder CSV) wählen, z. B. <b>Abdul.ods</b> oder <b>Cyhat.ods</b>. Die alte Version dieser Liste wird ersetzt – Haken bleiben erhalten.</div>
+      <button class="btn primary" style="width:100%" id="fileBtn">Tabelle auswählen</button>
+      <input type="file" id="fileIn" class="vh" accept=".xlsx,.ods,.csv,.txt,text/csv,application/vnd.oasis.opendocument.spreadsheet,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      <label class="f" for="pasteIn">…oder Zeilen hier einfügen</label>
       <textarea id="pasteIn" placeholder="30/10/2026	FE26100	Filter	Tsiauo"></textarea>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="pasteBtn">Eingefügtes übernehmen</button>
-      </div>
+      <div class="row" style="margin-top:10px"><button class="btn" id="pasteBtn">Eingefügtes übernehmen</button></div>
       <div id="listMsg" style="color:var(--bad);margin-top:8px"></div>
     </div>
 
     <div class="card" id="mapCard" hidden>
       <h2>Spalten prüfen</h2>
-      <div class="muted" style="font-size:14px">Ich habe die Spalten automatisch erkannt. Wenn etwas nicht stimmt, hier umstellen.</div>
+      <div class="muted" style="font-size:14px">Automatisch erkannt. Wenn etwas nicht stimmt, hier umstellen.</div>
+      <div id="sheetInfo" style="font-size:14px;margin-top:8px"></div>
+      <label class="f">Wessen Liste ist das?</label>
+      <input type="text" id="ownerIn" list="ownerList" placeholder="z. B. Abdul oder Cyhat"><datalist id="ownerList"></datalist>
       <label class="f">Artikelnummer</label><select id="mapNr"></select>
       <label class="f">Kunde</label><select id="mapKunde"></select>
       <label class="f">Bezeichnung (optional)</label><select id="mapBez"></select>
-      <div id="mapPrev"></div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn primary" id="mapReplace">Liste ersetzen</button>
-        <button class="btn" id="mapAdd">Hinzufügen</button>
+      <label class="f">Datum (optional)</label><select id="mapDatum"></select>
+      <div id="dateBox" hidden>
+        <label class="f">Welche Tage übernehmen?</label>
+        <div id="dateChips" class="chips"></div>
       </div>
+      <div id="mapPrev"></div>
+      <button class="btn primary" style="width:100%;margin-top:12px" id="mapUpload">Hochladen</button>
+      <div id="upMsg" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
-      <h2>Aktuelle Liste</h2>
-      <div id="listInfo" class="muted"></div>
+      <h2>Verbindung</h2>
+      <div id="syncInfo" class="muted" style="font-size:14px"></div>
       <div class="row" style="margin-top:12px">
-        <button class="btn small" id="resetDone">Haken zurücksetzen</button>
-        <button class="btn small" id="clearList">Liste löschen</button>
+        <button class="btn small" id="syncBtn">Jetzt synchronisieren</button>
+        <button class="btn small" id="inviteBtn">Einladungscode</button>
       </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn small ghost" id="demoBtn">Beispielliste laden</button>
+      <div id="inviteBox" hidden style="margin-top:12px">
+        <div class="muted" style="font-size:14px;margin-bottom:6px">Diesen Code an neue Leute schicken. Das Passwort <b>getrennt</b> sagen (z. B. mündlich).</div>
+        <div class="code" id="inviteCode"></div>
+        <button class="btn small" style="margin-top:8px" id="copyInvite">Kopieren</button>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn small" id="renewBtn">Zugang erneuern</button><button class="btn small ghost" id="logoutBtn">Abmelden (dieses Handy)</button></div>
+      <div id="renewBox" hidden style="margin-top:12px">
+        <div class="muted" style="font-size:14px;margin-bottom:6px">Neuen <b>GitHub-Token</b> (beginnt mit github_pat_) <b>oder</b> neuen <b>Einladungscode</b> (beginnt mit TS1.) einfügen. Alle Listen und Haken bleiben erhalten.</div>
+        <textarea id="renewIn" style="min-height:70px" autocomplete="off"></textarea>
+        <button class="btn primary" style="width:100%;margin-top:8px" id="renewGo">Speichern</button>
+        <div id="renewMsg" style="margin-top:8px"></div>
       </div>
     </div>
   </section>
@@ -190,38 +328,102 @@
 <nav>
   <button data-v="scan" class="active"><span class="ic">⌖</span>Scannen</button>
   <button data-v="kunden"><span class="ic">☰</span>Kunden</button>
+  <button data-v="retoure"><span class="ic">↩</span>Retoure</button>
   <button data-v="liste"><span class="ic">⇪</span>Liste</button>
 </nav>
 
 <div class="dlg" id="dlg" hidden><div class="box"><div id="dlgText" style="font-size:17px;margin-bottom:16px"></div>
   <div class="row"><button class="btn" id="dlgNo">Abbrechen</button><button class="btn primary" id="dlgYes">OK</button></div></div></div>
 
+<div class="dlg" id="shareDlg" hidden><div class="box">
+  <h2 id="shareTitle">Noch offen</h2><div id="shareBox"></div>
+  <div class="row"><button class="btn" id="shareClose">Schließen</button><button class="btn" id="shareCopy">Kopieren</button><button class="btn ok" id="shareSend">Senden</button></div></div></div>
+
+<div class="dlg" id="choiceDlg" hidden><div class="box"><div id="choiceText" style="font-size:17px;margin-bottom:16px"></div><div id="choiceBtns"></div></div></div>
+<div class="dlg" id="photoDlg" hidden><div class="box"><h2 id="photoTitle"></h2><img id="photoImg" alt=""><div id="photoCap" class="muted" style="font-size:14px;margin:8px 0 12px"></div>
+  <div class="row"><button class="btn" id="photoNew">📷 Neues Foto</button><button class="btn primary" id="photoClose">Schließen</button></div></div></div>
+<input type="file" id="hoIn" class="vh" accept="image/*" capture="environment">
+<input type="file" id="kIn" class="vh" accept="image/*" capture="environment">
+<div class="dlg" id="kDlg" hidden><div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h2 id="kTitle" style="margin:0"></h2><button class="btn small" id="kClose">Schließen</button></div>
+  <label class="f">Adresse</label><textarea id="kAdr" style="min-height:64px" placeholder="Straße Nr., PLZ Ort"></textarea>
+  <label class="f">Telefon</label><input type="tel" id="kTel" placeholder="z. B. 0171 1234567">
+  <button class="btn primary" style="width:100%;margin-top:10px" id="kSave">Speichern</button>
+  <div id="kMsg" style="margin-top:6px;font-size:14px"></div>
+  <div class="row" style="margin-top:10px"><button class="btn" id="kRoute">🗺 Route</button><button class="btn" id="kCall">📞 Anrufen</button><button class="btn" id="kCopy">Kopieren</button></div>
+  <button class="btn" style="width:100%;margin-top:10px;border:1px solid var(--accent)" id="kHere">📍 Hier bin ich – Standort speichern</button>
+  <div class="gpsinfo" id="kGps"></div>
+  <h2 style="margin-top:16px">Fotos vom Ort <span class="muted" style="font-size:13px;font-weight:400">(max. 3)</span></h2>
+  <div class="kf" id="kPhotos"></div>
+</div></div>
+<div class="dlg" id="routeDlg" hidden><div class="box">
+  <div id="routeText" style="font-size:17px;margin-bottom:10px"></div><div id="routeImgs"></div>
+  <div class="row"><button class="btn" id="routeNo">Nein</button><button class="btn primary" id="routeYes">Ja, Google Maps öffnen</button></div>
+</div></div>
+
 <canvas id="cv" hidden></canvas>
+<canvas id="cv2" hidden></canvas>
 
 <script src="matcher.js"></script>
+<script src="sync.js"></script>
+<script src="brands.js"></script>
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-// ---------- Speicher ----------
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('ts_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('ts_' + k, JSON.stringify(v)); } catch (e) {} },
+  get(k, d) { try { const v = localStorage.getItem('ts2_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('ts2_' + k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem('ts2_' + k); } catch (e) {} },
 };
-let items = store.get('items', []);      // {nummer, bez, kunde, qty, done}
-let learned = store.get('learned', {});  // Barcode -> Nummer (normalisiert)
-let index = Matcher.buildIndex(items);
-function save() { store.set('items', items); index = Matcher.buildIndex(items); renderAll(); }
+const nowIso = () => new Date().toISOString();
+const hhmm = (iso) => { try { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); } catch (e) { return ''; } };
+const dayTime = (iso) => { try { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}. ${hhmm(iso)}`; } catch (e) { return ''; } };
+
+// ---------- Zustand ----------
+let cfg = store.get('cfg', null);                 // {invite, password, name}
+let lists = store.get('lists', {});               // Besitzer -> {items, at, by, sha}
+let checks = store.get('checks', {});             // id -> {n, by, at}
+let memory = store.get('memory', null) || { parts: {}, ean: {}, ocr: {}, prefix: {} };
+let retouren = store.get('retouren', {});         // id -> Retoure
+let kunden = store.get('kunden', {});             // "Besitzer|Kunde" -> {adresse, tel, lat, lng, acc, gpsAt, fotos[], at, by}
+let sha = store.get('sha', { checks: null, memory: null, retouren: null, kunden: null });
+let dirty = store.get('dirty', { checks: 0, memory: 0, retouren: 0, kunden: 0 });
+let mode = 'pick';                                // 'pick' oder 'retoure'
+let items = [];
+let activeDate = null;
+let ownerFilter = store.get('ownerFilter', 'Alle');
+const onDay = (it) => it.datum === activeDate;
+const inFilter = (it) => ownerFilter === 'Alle' || it.owner === ownerFilter;
+let index = [];
+
+function rebuildItems() {
+  items = [];
+  for (const owner of Object.keys(lists).sort()) {
+    const seen = {};
+    for (const x of lists[owner].items || []) {
+      const base = owner + '|' + x.kunde + '|' + x.datum + '|' + Matcher.norm(x.nummer);
+      seen[base] = (seen[base] || 0) + 1;
+      const id = base + '|' + seen[base];
+      const c = checks[id] || {};
+      items.push({ ...x, owner, id, done: c.n || 0, by: c.by, at: c.at });
+    }
+  }
+}
+let indexOther = [], indexAll = [];
+function rebuild() { index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items); }
+function persist() { store.set('kunden', kunden); store.set('retouren', retouren); store.set('lists', lists); store.set('checks', checks); store.set('memory', memory); store.set('sha', sha); store.set('dirty', dirty); }
+function refresh() { rebuildItems(); rebuild(); renderAll(); if (current && current.sel) (current.ret ? renderRetoure() : renderResult()); }
 
 // ---------- Navigation ----------
 document.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.v));
 function show(v) {
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
   document.querySelectorAll('section').forEach((s) => s.classList.toggle('active', s.id === 'v-' + v));
+  document.body.classList.toggle('setup', v === 'setup');
+  if (v !== 'scan' && mode !== 'pick') { mode = 'pick'; renderMode(); }
   if (v !== 'scan') pauseLoop(); else resumeLoop();
 }
-
 function confirmDlg(text) {
   return new Promise((res) => {
     $('#dlgText').textContent = text; $('#dlg').hidden = false;
@@ -229,6 +431,184 @@ function confirmDlg(text) {
     $('#dlgNo').onclick = () => { $('#dlg').hidden = true; res(false); };
   });
 }
+
+function choiceDlg(text, buttons) {
+  return new Promise((res) => {
+    $('#choiceText').textContent = text;
+    $('#choiceBtns').innerHTML = buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-i="${i}">${esc(b.label)}</button>`).join('');
+    $('#choiceBtns').querySelectorAll('button').forEach((el) => el.onclick = () => { $('#choiceDlg').hidden = true; res(buttons[+el.dataset.i].value); });
+    $('#choiceDlg').hidden = false;
+  });
+}
+// ---------- Fotos (lokaler Zwischenspeicher) ----------
+const idb = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => { try { const r = indexedDB.open('teilescanner', 1); r.onupgradeneeded = () => r.result.createObjectStore('photos'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }));
+  return {
+    async get(k) { try { const db = await open(); return await new Promise((res) => { const q = db.transaction('photos').objectStore('photos').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch (e) { return null; } },
+    async set(k, v) { try { const db = await open(); await new Promise((res) => { const t = db.transaction('photos', 'readwrite'); t.objectStore('photos').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch (e) {} },
+  };
+})();
+const photoMem = {};
+async function getPhoto(k) {
+  if (photoMem[k] !== undefined) return photoMem[k];
+  let p = await idb.get(k);
+  if (!p && conn) { try { const r = await Sync.readFile(conn, 'photos/' + k + '.enc'); if (r && r.data) { p = r.data.img; idb.set(k, p); } } catch (e) {} }
+  photoMem[k] = p || null; return photoMem[k];
+}
+function fillThumbs(rootEl) {
+  rootEl.querySelectorAll('img[data-ph]').forEach(async (img) => { const p = await getPhoto(img.dataset.ph); if (p) { img.src = p; img.hidden = false; } });
+}
+
+// ---------- Synchronisation ----------
+let conn = null, syncing = null, syncErr = '', lastSync = store.get('lastSync', null);
+function setDot() {
+  const d = $('#syncDot'); d.className = syncing ? 'busy' : syncErr ? 'err' : conn ? 'ok' : '';
+  const pend = (dirty.checks || dirty.memory || dirty.retouren || dirty.kunden) ? ' · Änderungen warten auf Upload' : '';
+  $('#syncInfo').innerHTML = cfg ? `Angemeldet als <b>${esc(cfg.name)}</b>.<br>${syncErr ? '<span class="err-msg">' + esc(syncErr) + '</span>' : lastSync ? 'Zuletzt synchronisiert: ' + dayTime(lastSync) : 'Noch nicht synchronisiert'}${pend}` : '';
+}
+async function ensureConn() {
+  if (conn) return conn;
+  const c = await Sync.readInvite(cfg.invite, cfg.password);
+  conn = await Sync.connect(c, cfg.password);
+  return conn;
+}
+const mergeRet = (remote, local) => { const out = { ...remote }; for (const [k, v] of Object.entries(local || {})) if (!out[k] || (v.at || '') > (out[k].at || '')) out[k] = v; return out; };
+const mergeChecks = (remote, local) => { const out = { ...remote }; for (const [k, v] of Object.entries(local || {})) if (!out[k] || (v.at || '') > (out[k].at || '')) out[k] = v; return out; };
+function mergeMemory(remote, local) {
+  remote = remote || {}; local = local || {};
+  const out = { parts: { ...(remote.parts || {}) }, ean: { ...(remote.ean || {}), ...(local.ean || {}) }, ocr: { ...(remote.ocr || {}), ...(local.ocr || {}) }, prefix: { ...(remote.prefix || {}), ...(local.prefix || {}) } };
+  for (const [k, l] of Object.entries(local.parts || {})) {
+    const r = out.parts[k];
+    if (!r) { out.parts[k] = l; continue; }
+    const kunden = { ...(r.kunden || {}) }; for (const [n, c] of Object.entries(l.kunden || {})) kunden[n] = Math.max(kunden[n] || 0, c);
+    out.parts[k] = { ...r, ...l, marke: l.marke || r.marke, bez: l.bez || r.bez, photo: !!(l.photo || r.photo), count: Math.max(r.count || 0, l.count || 0), kunden,
+      ean: [...new Set([...(r.ean || []), ...(l.ean || [])])], last: (l.last || '') > (r.last || '') ? l.last : r.last };
+  }
+  return out;
+}
+
+function sync() {
+  if (!cfg) return Promise.resolve();
+  if (syncing) { syncAgain = true; return syncing; }
+  syncing = (async () => {
+    setDot();
+    try {
+      await ensureConn();
+      // 1) eigene Änderungen hochladen
+      let changed = false;
+      for (const [file, get, set, merge] of [['checks', () => checks, (v) => checks = v, mergeChecks], ['memory', () => memory, (v) => memory = v, mergeMemory], ['retouren', () => retouren, (v) => retouren = v, mergeRet], ['kunden', () => kunden, (v) => kunden = v, mergeRet]]) {
+        if (!dirty[file]) continue;
+        const ver = dirty[file];
+        const res = await Sync.writeFile(conn, file + '.enc', JSON.parse(JSON.stringify(get())), sha[file], merge, file + ' von ' + cfg.name);
+        const before = JSON.stringify(get()); set(merge(res.data, get())); sha[file] = res.sha;
+        if (JSON.stringify(get()) !== before) changed = true;
+        if (dirty[file] === ver) dirty[file] = 0;
+      }
+      // 2) Änderungen der anderen holen
+      for (const [file, get, set, merge] of [['checks', () => checks, (v) => checks = v, mergeChecks], ['memory', () => memory, (v) => memory = v, mergeMemory], ['retouren', () => retouren, (v) => retouren = v, mergeRet], ['kunden', () => kunden, (v) => kunden = v, mergeRet]]) {
+        const r = await Sync.readFile(conn, file + '.enc', true);
+        if (r && r !== 'same' && r.sha !== sha[file]) { set(dirty[file] ? merge(r.data, get()) : r.data); sha[file] = r.sha; changed = true; }
+      }
+      const dir = await Sync.listDir(conn, 'lists', true);
+      if (dir && dir !== 'same') {
+        const names = {};
+        for (const f of dir) {
+          const m = /^(.+)\.enc$/.exec(f.name); if (!m) continue;
+          const owner = decodeURIComponent(m[1]); names[owner] = 1;
+          if (!lists[owner] || lists[owner].sha !== f.sha) {
+            const r = await Sync.readFile(conn, 'lists/' + f.name);
+            if (r && r.data) { lists[owner] = { items: r.data.items || [], at: r.data.at, by: r.data.by, sha: r.sha }; changed = true; }
+          }
+        }
+        for (const o of Object.keys(lists)) if (!names[o]) { delete lists[o]; changed = true; }
+      }
+      syncErr = ''; lastSync = nowIso(); store.set('lastSync', lastSync);
+      persist();
+      if (changed) refresh();
+    } catch (e) {
+      syncErr = e.message || String(e);
+      if (/Passwort|Token|Zugriff|Schreibrechte/.test(syncErr)) conn = null;
+      if (/Token ungültig/.test(syncErr)) syncErr = 'Zugang abgelaufen – unter „Liste → Zugang erneuern“ neuen Token oder Einladungscode eintragen. Es gehen keine Daten verloren.';
+    } finally {
+      syncing = null; setDot();
+      if (syncAgain) { syncAgain = false; setTimeout(sync, 300); }
+    }
+  })();
+  return syncing;
+}
+let syncAgain = false, syncTimer = null;
+function syncSoon(ms = 1500) { clearTimeout(syncTimer); syncTimer = setTimeout(sync, ms); }
+setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); });
+window.addEventListener('online', () => sync());
+
+// Haken setzen (für alle sichtbar)
+function setCheck(it, n) {
+  checks[it.id] = { n, by: cfg.name, at: nowIso() };
+  dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+
+// ---------- Lernen ----------
+function partOf(k, it) { return memory.parts[k] || (memory.parts[k] = { n: it.nummer, bez: it.bez || '', marke: '', count: 0, kunden: {}, ean: [], photo: false, last: '' }); }
+function brandOf(it) { const p = memory.parts[Matcher.norm(it.nummer)]; return (p && p.marke) || Brands.fromNumber(it.nummer, memory.prefix); }
+function learn(it, ctx) {
+  const k = Matcher.norm(it.nummer); const p = partOf(k, it);
+  p.count = (p.count || 0) + 1; p.last = nowIso(); if (!p.bez && it.bez) p.bez = it.bez;
+  p.kunden[it.kunde] = (p.kunden[it.kunde] || 0) + 1;
+  if (ctx) {
+    const brand = Brands.fromText(ctx.text);
+    if (brand) { p.marke = brand; const pf = Brands.prefix(it.nummer); if (pf) memory.prefix[pf] = brand; }
+    if (ctx.barcode) { const b = Matcher.norm(ctx.barcode); memory.ean[b] = k; if (!p.ean.includes(b)) p.ean.push(b); }
+    if (ctx.hit && !ctx.hit.exact && ctx.hit.cand) memory.ocr[Matcher.fuzzy(ctx.hit.cand)] = k;
+    if (ctx.thumb && !p.photo) {
+      p.photo = true; photoMem[k] = ctx.thumb; idb.set(k, ctx.thumb);
+      ensureConn().then(() => Sync.writeFile(conn, 'photos/' + k + '.enc', { img: ctx.thumb, at: nowIso(), by: cfg.name }, null, (r, l) => l, 'Foto ' + it.nummer)).catch(() => {});
+    }
+  }
+  if (!p.marke) p.marke = Brands.fromNumber(it.nummer, memory.prefix);
+  dirty.memory = (dirty.memory || 0) + 1;
+}
+// gelernte Lesefehler / Barcodes zuerst prüfen
+function learnedHits(text, keep = onDay) {
+  const hits = [];
+  for (const c of Matcher.candidates(text)) {
+    const k = memory.ocr[Matcher.fuzzy(c)]; if (!k) continue;
+    items.forEach((it, i) => { if (keep(it) && Matcher.norm(it.nummer) === k && !hits.some((h) => h.i === i)) hits.push({ i, score: 190, exact: true, cand: c }); });
+  }
+  return hits;
+}
+// Stichwort-Treffer für Einträge ohne echte Nummer (z. B. "CH U. SN 5W30 4L PL")
+function wordHits(text, keep = onDay) {
+  const toks = new Set();
+  for (const line of String(text || '').split(/\n+/)) { const t = line.split(/\s+/).map(Matcher.norm).filter(Boolean); t.forEach((x, i) => { toks.add(x); if (t[i + 1]) toks.add(x + t[i + 1]); }); }
+  const hits = [];
+  items.forEach((it, i) => {
+    if (!keep(it)) return;
+    const words = String(it.nummer).toUpperCase().split(/[\s.,\/]+/).map(Matcher.norm).filter((w) => w.length >= 2);
+    if (words.length < 3) return;
+    let got = 0, total = 0, strong = false;
+    for (const w of words) { const wt = /\d/.test(w) ? 2 : 1; total += wt; if (toks.has(w)) { got += wt; if (/\d/.test(w) && /[A-Z]/.test(w) && w.length >= 4) strong = true; } }
+    if (strong && got >= 2) hits.push({ i, score: 40 + Math.round(20 * got / total), exact: false, cand: '' });
+  });
+  return hits.sort((a, b) => b.score - a.score);
+}
+// Teil erkannt, aber an diesem Tag nicht bestellt?
+function otherDayHits(text, codes) {
+  let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && x.score >= 110) : []; // nur exakte Nummern ab 5 Zeichen
+  for (const c of codes || []) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, (it) => !onDay(it)));
+  if (!h.length) for (const c of codes || []) { const k = memory.ean[Matcher.norm(c)]; if (k) return { nummer: (memory.parts[k] && memory.parts[k].n) || k, key: k }; }
+  if (!h.length) return null;
+  const its = h.map((x) => items[x.i]).sort((a, b) => (b.datum || '').localeCompare(a.datum || ''));
+  return { nummer: its[0].nummer, key: Matcher.norm(its[0].nummer), last: its[0] };
+}
+const ALL = () => true;
+function retHits(text, codes) {
+  let h = []; for (const c of codes || []) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, ALL));
+  if (!h.length && text) { h = learnedHits(text, ALL); if (!h.length) h = Matcher.match(text, indexAll); if (!h.length) h = wordHits(text, ALL); }
+  return h;
+}
+function barcodeHits(codes) { let h = []; for (const c of codes) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, onDay)); return h; }
 
 // ---------- Texterkennung (Worker) ----------
 let worker = null, reqId = 0; const pending = new Map();
@@ -241,108 +621,143 @@ function getWorker() {
 }
 function ocr(bytes, psm) {
   return new Promise((res, rej) => {
-    const id = ++reqId; pending.set(id, { res, rej });
+    const id = ++reqId;
+    // hängt die Texterkennung (z. B. nach dem Zurückkehren in die App), nach 10 s neu starten
+    const t = setTimeout(() => { if (!pending.has(id)) return; pending.delete(id); try { worker && worker.terminate(); } catch (e) {} worker = null; rej(new Error('Texterkennung neu gestartet')); }, bytes ? 10000 : 60000);
+    pending.set(id, { res: (v) => { clearTimeout(t); res(v); }, rej: (e) => { clearTimeout(t); rej(e); } });
     getWorker().postMessage({ id, bytes, psm }, bytes ? [bytes] : []);
   });
 }
 function warmup() { ocr(null).catch((e) => setStatus('Texterkennung konnte nicht starten: ' + e.message)); }
-
-// Bildausschnitt -> Graustufen-JPEG
 function grab(src, sx, sy, sw, sh, maxW) {
   const cv = $('#cv'); const scale = Math.min(1, maxW / sw);
   cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
   const ctx = cv.getContext('2d', { willReadFrequently: true });
-  ctx.filter = 'grayscale(1) contrast(1.25)';
-  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
-  ctx.filter = 'none';
+  ctx.filter = 'grayscale(1) contrast(1.25)'; ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height); ctx.filter = 'none';
   return new Promise((res) => cv.toBlob((b) => b.arrayBuffer().then(res), 'image/jpeg', 0.92));
 }
-
+// kleines Farbfoto vom Karton (für die Liste)
+function thumb(src, sx, sy, sw, sh) {
+  try {
+    const cv = $('#cv2'); const s = Math.min(1, 320 / Math.max(sw, sh));
+    cv.width = Math.round(sw * s); cv.height = Math.round(sh * s);
+    cv.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.7);
+  } catch (e) { return null; }
+}
 let barcodeDetector = null;
 try { if ('BarcodeDetector' in window) barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a'] }); } catch (e) {}
-async function readBarcodes(src) {
-  if (!barcodeDetector) return [];
-  try { return (await barcodeDetector.detect(src)).map((b) => b.rawValue); } catch (e) { return []; }
-}
+async function readBarcodes(src) { if (!barcodeDetector) return []; try { return (await barcodeDetector.detect(src)).map((b) => b.rawValue); } catch (e) { return []; } }
 
 // ---------- Kamera ----------
 const video = $('#video');
-let stream = null, looping = false, paused = false, lastHit = null, scanStart = 0;
-let audioCtx = null;
-
+let camWanted = false, loopGen = 0, lastT = -1, stuck = 0, restarting = false;
+let stream = null, looping = false, paused = false, lastHit = null, lastWarn = null, unkCode = null, unkCount = 0, scanStart = 0, audioCtx = null;
 $('#startCam').onclick = startCam;
 $('#stopCam').onclick = stopCam;
-
 async function startCam() {
-  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
-  if (!items.length) { setStatus('Noch keine Liste geladen – unter „Liste“ eine Excel-Datei laden.'); }
+  camWanted = true;
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  if (stream) releaseCam();
+  if (!items.length) setStatus('Noch keine Liste im Pool – unter „Liste“ hochladen.');
   warmup();
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-  } catch (e) {
-    $('#camOffText').textContent = 'Die Live-Kamera ist hier nicht verfügbar. Nutze „Foto machen“ – das funktioniert genauso.';
-    $('#startCam').hidden = true;
-    return;
-  }
-  video.srcObject = stream; video.hidden = false; await video.play().catch(() => {});
-  // Autofokus/Taschenlampe, wo möglich
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
+  catch (e) { camWanted = false; $('#camOffText').textContent = 'Die Live-Kamera ist hier nicht verfügbar. Nutze „Foto machen“ – das funktioniert genauso.'; $('#startCam').hidden = true; return; }
+  if (!camWanted || document.visibilityState === 'hidden') { stream.getTracks().forEach((t) => t.stop()); stream = null; return; }
+  const track = stream.getVideoTracks()[0];
+  if (track) track.addEventListener('ended', () => { if (camWanted && document.visibilityState === 'visible') restartCam(); });
+  video.srcObject = stream; video.hidden = false; await video.play().catch(() => {}); lastT = -1; stuck = 0;
   try { const t = stream.getVideoTracks()[0]; const c = t.getCapabilities ? t.getCapabilities() : {}; if (c.focusMode && c.focusMode.includes('continuous')) await t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
   $('#camOff').hidden = true; $('#frame').hidden = false; $('#camHint').hidden = false; $('#stopCam').hidden = false;
-  paused = false; scanStart = Date.now(); loop();
+  paused = !$('#result').hidden || !$('#v-scan').classList.contains('active'); scanStart = Date.now(); if (!paused) loop();
 }
-function stopCam() {
-  looping = false;
+// Kamera freigeben (ohne den Wunsch "Kamera an" zu vergessen)
+function releaseCam() {
+  loopGen++; looping = false;
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null; video.srcObject = null; video.hidden = true;
-  $('#camOff').hidden = false; $('#frame').hidden = true; $('#camHint').hidden = true; $('#stopCam').hidden = true; $('#startCam').hidden = false;
+  $('#frame').hidden = true; $('#camHint').hidden = true; $('#frame').classList.remove('busy');
 }
+function stopCam() {
+  camWanted = false; releaseCam();
+  $('#camOff').hidden = false; $('#stopCam').hidden = true; $('#startCam').hidden = false;
+}
+async function restartCam() { if (restarting) return; restarting = true; try { releaseCam(); await startCam(); } finally { restarting = false; } }
+// App verlassen -> Kamera aus; zurück -> Kamera wieder an
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { if (stream) releaseCam(); }
+  else if (camWanted && !stream && $('#v-scan').classList.contains('active')) restartCam();
+});
+window.addEventListener('pageshow', () => { if (camWanted && !stream && document.visibilityState === 'visible' && $('#v-scan').classList.contains('active')) restartCam(); });
+// Wächter: steht das Bild still, Kamera neu starten
+setInterval(() => {
+  if (!stream || !camWanted || document.visibilityState !== 'visible') return;
+  if (video.paused) video.play().catch(() => {});
+  const tr = stream.getVideoTracks()[0];
+  if (!tr || tr.readyState === 'ended') return restartCam();
+  if (video.currentTime === lastT) { if (++stuck >= 3) { stuck = 0; restartCam(); } } else { stuck = 0; lastT = video.currentTime; }
+}, 2000);
 function pauseLoop() { paused = true; }
-function resumeLoop() { if (stream && $('#result').hidden) { paused = false; scanStart = Date.now(); loop(); } }
-
-// Rahmen-Position in Video-Pixel umrechnen (object-fit: cover)
+function resumeLoop() {
+  if (stream && $('#result').hidden) { paused = false; scanStart = Date.now(); loop(); }
+  else if (!stream && camWanted && document.visibilityState === 'visible') restartCam();
+}
 function frameRect() {
   const vw = video.videoWidth, vh = video.videoHeight; const el = $('#cam').getBoundingClientRect(); const fr = $('#frame').getBoundingClientRect();
-  const s = Math.max(el.width / vw, el.height / vh); const ox = (el.width - vw * s) / 2, oy = (el.height - vh * s) / 2;
-  const pad = 0.06; // etwas großzügiger als der Rahmen
+  const s = Math.max(el.width / vw, el.height / vh); const ox = (el.width - vw * s) / 2, oy = (el.height - vh * s) / 2; const pad = 0.06;
   let x = (fr.left - el.left - ox) / s, y = (fr.top - el.top - oy) / s, w = fr.width / s, h = fr.height / s;
   x -= w * pad; y -= h * pad; w *= 1 + 2 * pad; h *= 1 + 2 * pad;
   x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
   return [x, y, w, h];
 }
-
 async function loop() {
-  if (looping) return; looping = true;
-  while (stream && !paused) {
+  if (looping) return; looping = true; const gen = loopGen;
+  while (stream && !paused && gen === loopGen) {
     if (!video.videoWidth) { await new Promise((r) => setTimeout(r, 200)); continue; }
     $('#frame').classList.add('busy');
     try {
       const codes = await readBarcodes(video);
-      let hits = [];
-      for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, learned));
-      let text = '';
-      if (!hits.length) {
+      if (mode === 'retoure') {
         const [x, y, w, h] = frameRect();
-        const r = await ocr(await grab(video, x, y, w, h, 1100));
-        text = r.text || '';
-        hits = Matcher.match(text, index);
+        let hits = []; for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, memory.ean, ALL));
+        let text = ''; if (!hits.length) { text = (await ocr(await grab(video, x, y, w, h, 1100))).text || ''; hits = retHits(text, []); }
+        if (paused || !stream || mode !== 'retoure') { $('#frame').classList.remove('busy'); continue; }
+        if (hits.length) {
+          const top = hits[0];
+          if (top.exact || top.score >= 100 || lastHit === top.i) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showRetoure(hits, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break; }
+          lastHit = top.i; setStatus('Fast… bitte ruhig halten');
+        } else { lastHit = null; if (Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran oder eintippen.'); }
+        $('#frame').classList.remove('busy'); continue;
       }
-      if (paused || !stream) break;
+      let hits = barcodeHits(codes), text = '';
+      const [x, y, w, h] = frameRect();
+      if (!hits.length) {
+        text = (await ocr(await grab(video, x, y, w, h, 1100))).text || '';
+        hits = learnedHits(text); if (!hits.length) hits = Matcher.match(text, index); if (!hits.length) hits = wordHits(text);
+      }
+      if (paused || !stream || gen !== loopGen) break;
+      if (!hits.length) {
+        // nicht bestellt? (muss zweimal hintereinander gleich erkannt werden)
+        const od = otherDayHits(text, codes);
+        if (od) { if (lastWarn === od.key) { showNotOrdered(od); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        lastWarn = null;
+        // unbekannter Barcode, mehrmals gesehen, aber keine Nummer lesbar -> zuordnen lassen
+        const unk = codes.find((c) => !memory.ean[Matcher.norm(c)] && !ignoreCodes.has(c));
+        if (unk) { unkCount = unkCode === unk ? unkCount + 1 : 1; unkCode = unk; if (unkCount >= 3 && items.some(onDay)) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showAssign(unk, thumb(video, (vw - side) / 2, (vh - side) / 2, side, side)); break; } }
+        else { unkCode = null; unkCount = 0; }
+      }
       if (hits.length) {
         const top = hits[0];
-        // sicherer Treffer sofort, unsicherer erst wenn zweimal hintereinander gleich
-        if (top.exact || top.score >= 100 || (lastHit === top.i)) { showResult(hits, codes[0]); break; }
+        if (top.exact || top.score >= 100 || lastHit === top.i) {
+          const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8;
+          showResult(hits, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break;
+        }
         lastHit = top.i; setStatus('Fast… bitte ruhig halten');
-      } else {
-        lastHit = null;
-        if (Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran, gerade halten, gutes Licht. Oder „Foto machen“.');
-      }
-    } catch (e) {
-      setStatus('Fehler bei der Erkennung: ' + e.message); await new Promise((r) => setTimeout(r, 1500));
-    }
+      } else { lastHit = null; if (Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran, gerade halten, gutes Licht. Oder „Foto machen“.'); }
+    } catch (e) { if (!/neu gestartet/.test(e.message)) setStatus('Fehler bei der Erkennung: ' + e.message); await new Promise((r) => setTimeout(r, 500)); }
     $('#frame').classList.remove('busy');
   }
-  $('#frame').classList.remove('busy');
-  looping = false;
+  $('#frame').classList.remove('busy'); if (gen === loopGen) looping = false;
 }
 
 // ---------- Foto ----------
@@ -354,18 +769,27 @@ $('#photo').onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   pauseLoop(); hideResult(); setStatus('Foto wird gelesen…');
   try {
-    const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => {
-      const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im;
-    });
-    const codes = await readBarcodes(img);
-    let hits = []; for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, learned));
-    if (!hits.length) {
-      const w = img.width, h = img.height;
-      hits = Matcher.match((await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text, index);
-      if (!hits.length) hits = Matcher.match((await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text, index);
+    const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => { const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im; });
+    const codes = await readBarcodes(img); let hits = barcodeHits(codes), text = '';
+    const w = img.width, h = img.height;
+    if (mode === 'retoure') {
+      let rh = retHits('', codes);
+      if (!rh.length) { text = (await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text; rh = retHits(text, []); }
+      if (!rh.length) { const t2 = (await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text; rh = retHits(t2, []); }
+      const side = Math.min(w, h) * 0.8;
+      if (rh.length) showRetoure(rh, { barcode: codes[0], text, thumb: thumb(img, (w - side) / 2, (h - side) / 2, side, side) });
+      else setStatus('Teil in keiner Liste gefunden. Tipp: näher ran – oder eintippen.');
+      return;
     }
-    if (hits.length) showResult(hits, codes[0]);
-    else setStatus('Keine Nummer aus der Liste gefunden. Tipp: näher an das Etikett, Nummer gut lesbar – oder eintippen.');
+    if (!hits.length) {
+      text = (await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text; hits = learnedHits(text); if (!hits.length) hits = Matcher.match(text, index);
+      if (!hits.length) { const t2 = (await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text; hits = Matcher.match(t2, index); if (!hits.length) hits = wordHits(text + '\n' + t2); text += '\n' + t2; }
+    }
+    const side = Math.min(w, h) * 0.8; const th = thumb(img, (w - side) / 2, (h - side) / 2, side, side);
+    if (hits.length) showResult(hits, { barcode: codes[0], text, thumb: th });
+    else if (otherDayHits(text, codes)) showNotOrdered(otherDayHits(text, codes));
+    else if (codes.find((c) => !memory.ean[Matcher.norm(c)]) && items.some(onDay)) showAssign(codes.find((c) => !memory.ean[Matcher.norm(c)]), th);
+    else setStatus(`Keine Nummer aus der Liste vom ${fmtLong(activeDate)} gefunden. Tipp: näher an das Etikett – oder eintippen.`);
   } catch (err) { setStatus('Foto konnte nicht gelesen werden: ' + err.message); }
 };
 
@@ -373,109 +797,473 @@ $('#photo').onchange = async (e) => {
 $('#manual').onsubmit = (e) => {
   e.preventDefault();
   const q = $('#manualIn').value.trim(); if (!q) return;
-  let hits = Matcher.match(q, index);
-  const nq = Matcher.norm(q);
-  if (nq.length >= 3) items.forEach((it, i) => { if (Matcher.norm(it.nummer).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 50 }); });
-  if (hits.length) { pauseLoop(); showResult(hits); $('#manualIn').blur(); }
-  else setStatus('„' + q + '“ steht nicht in der Liste.');
+  if (mode === 'retoure') {
+    const nq = Matcher.norm(q); let h = Matcher.match(q, indexAll);
+    if (nq.length >= 3) items.forEach((it, i) => { if ((Matcher.norm(it.nummer).includes(nq) || (nq.length >= 4 && Matcher.norm(it.bez).includes(nq))) && !h.some((x) => x.i === i)) h.push({ i, score: 50 }); });
+    if (h.length) { pauseLoop(); showRetoure(h, null); $('#manualIn').blur(); } else setStatus('„' + q + '“ steht in keiner Liste.');
+    return;
+  }
+  let hits = Matcher.match(q, index); const nq = Matcher.norm(q);
+  if (nq.length >= 3) items.forEach((it, i) => { if (onDay(it) && Matcher.norm(it.nummer).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 50 }); });
+  if (nq.length >= 2) items.forEach((it, i) => { if (onDay(it) && Matcher.norm(it.bez).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 45 }); });
+  if (hits.length) { pauseLoop(); showResult(hits, null); $('#manualIn').blur(); }
+  else setStatus('„' + q + '“ steht nicht in der Liste vom ' + fmtLong(activeDate) + '.');
 };
 
-// ---------- Treffer anzeigen ----------
+// ---------- Treffer ----------
 let current = null;
-function showResult(hits, barcode) {
-  // gleich gute Treffer: noch offene zuerst
+function isDone(i) { return (items[i].done || 0) >= (items[i].qty || 1); }
+function showResult(hits, ctx) {
   const best = hits[0].score;
   const sorted = hits.slice().sort((a, b) => (b.score >= best - 5) - (a.score >= best - 5) || (isDone(a.i) - isDone(b.i)) || b.score - a.score);
   const uniq = []; for (const h of sorted) if (!uniq.some((u) => u.i === h.i)) uniq.push(h);
-  current = { hits: uniq, sel: uniq[0].i, barcode };
+  current = { hits: uniq.map((h) => ({ ...h, id: items[h.i].id })), sel: items[uniq[0].i].id, ctx };
   renderResult(); feedback(); setStatus('');
 }
-function isDone(i) { return (items[i].done || 0) >= (items[i].qty || 1); }
+const idxOf = (id) => items.findIndex((x) => x.id === id);
 function renderResult() {
-  const it = items[current.sel]; const r = $('#result'); const done = isDone(current.sel);
-  const alts = current.hits.filter((h) => h.i !== current.sel).slice(0, 4);
+  const i = idxOf(current.sel); if (i < 0) { hideResult(); return; }
+  const it = items[i]; const r = $('#result'); const done = isDone(i);
+  const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const marke = brandOf(it);
+  const alts = current.hits.filter((h) => h.id !== current.sel).map((h) => idxOf(h.id)).filter((j) => j >= 0).slice(0, 4);
+  const top = p ? Object.entries(p.kunden || {}).sort((a, b) => b[1] - a[1])[0] : null;
+  const learnTxt = [marke, p && p.count ? `schon ${p.count}× gescannt` : 'zum ersten Mal gescannt', top && top[1] > 1 ? `meist für ${top[0]}` : ''].filter(Boolean).join(' · ');
   r.className = done ? 'done' : '';
   r.innerHTML = `
-    <div class="lbl">Kunde</div>
-    <div class="kunde">${esc(it.kunde || '—')}</div>
+    <img class="thumb" data-ph="${esc(k)}" hidden alt="">
+    <div class="lbl">Kunde / Liste</div>
+    <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
-    <div class="meta muted">Menge: ${it.done || 0} von ${it.qty || 1} erledigt</div>
-    ${done ? '<div class="flag">Schon komplett abgehakt</div>' : ''}
-    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px">Oder meintest du:</div><div class="alts">${alts.map((a) => `<button class="btn small" data-alt="${a.i}">${esc(items[a.i].kunde)} · ${esc(items[a.i].nummer)}</button>`).join('')}</div>` : ''}
-    <div class="row actions">
+    <div class="meta muted">Menge: ${it.done || 0} von ${it.qty || 1} · bestellt ${fmtDate(it.datum)}</div>
+    <div class="learn">${esc(learnTxt)}</div>
+    ${(() => { const h = current.hits.find((x) => x.id === current.sel); return h && !h.exact && h.score < 80 && current.ctx ? '<div class="flag check">Bitte prüfen – nicht ganz sicher erkannt</div> ' : ''; })()}
+    ${done ? `<div class="flag">Schon abgehakt${it.by ? ' von ' + esc(it.by) + ' um ' + hhmm(it.at) : ''}</div>` : ''}
+    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder meintest du:</div><div class="alts">${alts.map((j) => `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${esc(items[j].nummer)}</button>`).join('')}</div>` : ''}
+    <div class="row actions" style="clear:both">
       <button class="btn ok" id="rDone">✓ Abhaken</button>
       <button class="btn" id="rNext">Weiter</button>
     </div>`;
-  r.hidden = false;
-  r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = +b.dataset.alt; renderResult(); });
+  r.hidden = false; fillThumbs(r);
+  r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = b.dataset.alt; renderResult(); });
   $('#rDone').onclick = () => {
-    const x = items[current.sel]; x.done = Math.min((x.done || 0) + 1, x.qty || 1);
-    if (current.barcode) { learned[Matcher.norm(current.barcode)] = Matcher.norm(x.nummer); store.set('learned', learned); }
-    save(); nextScan();
+    const j = idxOf(current.sel); if (j < 0) return nextScan();
+    const x = items[j]; const hit = current.hits.find((h) => h.id === current.sel);
+    learn(x, current.ctx ? { ...current.ctx, hit } : null);
+    setCheck(x, Math.min((x.done || 0) + 1, x.qty || 1)); nextScan();
   };
   $('#rNext').onclick = nextScan;
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+// ---------- Retoure ----------
+const FRIST_TAGE = 28;          // 4 Wochen ab Erhalt; der 28. Tag zählt noch
+const WARN_TAGE = 3;            // ab 3 Tagen vor Ablauf gelb
+function localDay(iso) { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+const dayNum = (iso) => { const [y, m, d] = iso.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); };
+// Frist-Status eines Teils: erhalten = Zeitpunkt des Abhakens
+function frist(it) {
+  if (!((it.done || 0) > 0 && it.at)) return { status: 'unk' };
+  const erh = localDay(it.at); const ende = addDays(erh, FRIST_TAGE); const heute = isoToday(0);
+  const seit = dayNum(heute) - dayNum(erh); const rest = dayNum(ende) - dayNum(heute);
+  return { status: rest < 0 ? 'late' : rest <= WARN_TAGE ? 'soon' : 'ok', erhalten: erh, ende, seit, rest };
+}
+function fristBox(f) {
+  if (f.status === 'unk') return '<div class="fbox unk"><span class="big">Erhalt unbekannt</span>Das Teil wurde nie abgehakt.</div>';
+  if (f.status === 'late') return `<div class="fbox late"><span class="big">⛔ Frist abgelaufen</span>erhalten am ${fmtLong(f.erhalten)} (vor ${f.seit} Tagen) · Frist endete am ${fmtLong(f.ende)}</div>`;
+  if (f.status === 'soon') return `<div class="fbox soon"><span class="big">⚠ Retoure in Frist – endet ${f.rest === 0 ? 'heute' : f.rest === 1 ? 'morgen' : 'in ' + f.rest + ' Tagen'}</span>erhalten am ${fmtLong(f.erhalten)} · letzter Tag ${fmtLong(f.ende)}</div>`;
+  return `<div class="fbox ok"><span class="big">✅ Retoure in Frist</span>erhalten am ${fmtLong(f.erhalten)} · noch ${f.rest} Tage (bis ${fmtLong(f.ende)})</div>`;
+}
+function fristTag(r) {
+  if (r.frist === 'late') return `<span class="ftag late">⚠ nach Frist${r.erhalten ? ' (erhalten ' + fmtDate(r.erhalten) + ')' : ''}</span>`;
+  if (r.frist === 'unk' || !r.erhalten) return '<span class="ftag unk">Erhalt unbekannt</span>';
+  return `<span class="ftag ok">erhalten ${fmtDate(r.erhalten)} · in Frist ✓</span>`;
+}
+const REASONS = ['Falsch', 'Nicht gebraucht', 'Defekt'];
+const retOf = (itemId) => Object.values(retouren).find((r) => !r.deleted && r.itemId === itemId);
+function showRetoure(hits, ctx) {
+  // beste Treffer zuerst, bei gleicher Güte die neueste Bestellung
+  const best = hits[0].score; const seen = new Set();
+  const sorted = hits.slice().sort((a, b) => (b.score >= best - 5) - (a.score >= best - 5) || (items[b.i].datum || '').localeCompare(items[a.i].datum || '') || b.score - a.score)
+    .filter((h) => { const id = items[h.i].id; if (seen.has(id)) return false; seen.add(id); return true; });
+  current = { ret: true, hits: sorted.map((h) => ({ ...h, id: items[h.i].id })), sel: items[sorted[0].i].id, ctx, reason: '' };
+  renderRetoure(); feedback(); setStatus('');
+}
+function renderRetoure() {
+  const i = idxOf(current.sel); if (i < 0) return hideResult();
+  const it = items[i]; const r = $('#result'); const prev = retOf(it.id);
+  const alts = current.hits.filter((h) => h.id !== current.sel).map((h) => idxOf(h.id)).filter((j) => j >= 0).slice(0, 6);
+  const f = frist(it);
+  r.className = 'ret ' + f.status;
+  if (current.soundFor !== it.id) { current.soundFor = it.id; if (f.status === 'late') warnSound(); }
+  r.innerHTML = `
+    <img class="thumb" data-ph="${esc(Matcher.norm(it.nummer))}" hidden alt="">
+    ${fristBox(f)}
+    <div class="lbl" style="margin-top:8px">Retoure von</div>
+    <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
+    <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
+    <div class="meta muted">bestellt am ${fmtDate(it.datum)}${(it.done || 0) > 0 && it.by ? ' · abgehakt von ' + esc(it.by) : ''}</div>
+    ${prev ? `<div class="flag">Schon als Retoure erfasst am ${dayTime(prev.at)} von ${esc(prev.by)}</div>` : ''}
+    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder war es:</div><div class="alts">${alts.map((j) => { const fj = frist(items[j]); return `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${fmtDate(items[j].datum)}${fj.status === 'late' ? ' ⛔' : fj.status === 'unk' ? '' : ' ✓'}</button>`; }).join('')}</div>` : ''}
+    <div class="muted" style="margin-top:10px;font-size:14px;clear:both">Grund (optional):</div>
+    <div class="reasons">${REASONS.map((x) => `<button class="chip ${current.reason === x ? 'on' : ''}" data-r="${x}">${x}</button>`).join('')}</div>
+    <div class="row actions">${f.status === 'late' ? '<button class="btn" id="rRet" style="border:1px solid var(--bad)">Trotzdem erfassen (Kulanz)</button>' : '<button class="btn ret" id="rRet">↩ Retoure erfassen</button>'}<button class="btn" id="rNext">Abbrechen</button></div>`;
+  r.hidden = false; fillThumbs(r);
+  r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = b.dataset.alt; renderRetoure(); });
+  r.querySelectorAll('[data-r]').forEach((b) => b.onclick = () => { current.reason = current.reason === b.dataset.r ? '' : b.dataset.r; renderRetoure(); });
+  $('#rRet').onclick = () => {
+    const j = idxOf(current.sel); if (j < 0) return nextScan(); const x = items[j];
+    const id = 'R' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const fx = frist(x);
+    retouren[id] = { id, itemId: x.id, nummer: x.nummer, bez: x.bez || '', kunde: x.kunde, owner: x.owner, bestellt: x.datum, grund: current.reason, tag: isoToday(0), at: nowIso(), by: cfg.name, frist: fx.status === 'soon' ? 'ok' : fx.status, erhalten: fx.erhalten || '' };
+    dirty.retouren = (dirty.retouren || 0) + 1; persist(); renderRetList(); syncSoon();
+    setStatus(`↩ Retoure gespeichert: ${x.nummer} von ${x.kunde} / ${x.owner}${fx.status === 'late' ? ' (nach Frist, Kulanz)' : ''}`); nextScan();
+  };
+  $('#rNext').onclick = nextScan;
+  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderMode() {
+  $('#modeBar').hidden = mode !== 'retoure';
+  $('#scanDay').hidden = mode === 'retoure'; $('#stand1').hidden = mode === 'retoure';
+  $('#manualIn').placeholder = mode === 'retoure' ? 'Retoure: Nummer eintippen' : 'Nummer eintippen, z. B. 26100';
+}
+$('#retScan').onclick = () => { show('scan'); mode = 'retoure'; renderMode(); hideResult(); setStatus(''); if (!stream) startCam(); };
+$('#modeEnd').onclick = () => { mode = 'pick'; renderMode(); hideResult(); show('retoure'); };
+
+let retDay = isoToday(0);
+function renderRetList() {
+  const all = Object.values(retouren).filter((r) => !r.deleted);
+  const days = [...new Set([isoToday(0), ...all.map((r) => r.tag)])].sort().reverse().slice(0, 10);
+  if (!days.includes(retDay)) retDay = isoToday(0);
+  $('#retDays').innerHTML = days.map((d) => { const n = all.filter((r) => r.tag === d).length; return `<button class="chip ${d === retDay ? 'on' : ''}" data-d="${d}">${d === isoToday(0) ? 'Heute' : fmtDate(d)}${n ? ' · ' + n : ''}</button>`; }).join('');
+  $('#retDays').querySelectorAll('[data-d]').forEach((b) => b.onclick = () => { retDay = b.dataset.d; renderRetList(); });
+  const owners = Object.keys(lists).sort();
+  $('#retOwners').innerHTML = owners.length > 1 ? ['Alle', ...owners].map((o) => `<button class="chip ${o === ownerFilter ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('') : '';
+  $('#retOwners').querySelectorAll('.chip').forEach((b) => b.onclick = () => { ownerFilter = b.dataset.o; store.set('ownerFilter', ownerFilter); renderAll(); });
+  const list = all.filter((r) => r.tag === retDay && (ownerFilter === 'Alle' || r.owner === ownerFilter));
+  const g = new Map(); for (const r of list.sort((a, b) => a.at.localeCompare(b.at))) { const k = r.kunde + ' / ' + r.owner; if (!g.has(k)) g.set(k, []); g.get(k).push(r); }
+  $('#retList').innerHTML = list.length ? [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de')).map(([k, arr]) => `
+    <div class="kgroup"><div class="khead"><span>${esc(k.split(' / ')[0])}<span class="tag">${esc(k.split(' / ')[1])}</span></span><span class="cnt">${arr.length}</span></div>
+    ${arr.map((r) => `<div class="ritem"><div><div class="nr">${esc(r.nummer)}${r.grund ? `<span class="rtag">${esc(r.grund)}</span>` : ''}</div>${r.bez ? `<div class="bz">${esc(r.bez)}</div>` : ''}<div class="bz">bestellt ${fmtDate(r.bestellt)} · erfasst ${hhmm(r.at)} von ${esc(r.by)}</div><div>${fristTag(r)}</div></div><button class="x" data-del="${esc(r.id)}" aria-label="Löschen">×</button></div>`).join('')}</div>`).join('')
+    : `<div class="muted" style="padding:20px;text-align:center">Keine Retouren ${retDay === isoToday(0) ? 'heute' : 'am ' + fmtLong(retDay)}.</div>`;
+  $('#retList').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    const r = retouren[b.dataset.del]; if (!r) return;
+    if (!(await confirmDlg(`Retoure ${r.nummer} (${r.kunde}) löschen?`))) return;
+    retouren[r.id] = { ...r, deleted: true, at: nowIso(), by: cfg.name }; dirty.retouren = (dirty.retouren || 0) + 1; persist(); renderRetList(); renderKunden(); syncSoon();
+  });
+}
+function retText() {
+  const list = Object.values(retouren).filter((r) => !r.deleted && r.tag === retDay && (ownerFilter === 'Alle' || r.owner === ownerFilter));
+  if (!list.length) return `Keine Retouren am ${fmtLong(retDay)}.`;
+  const g = new Map(); for (const r of list) { const k = r.kunde + (Object.keys(lists).length > 1 ? ' / ' + r.owner : ''); if (!g.has(k)) g.set(k, []); g.get(k).push(r); }
+  let t = `Retouren ${fmtLong(retDay)}${ownerFilter !== 'Alle' ? ' (' + ownerFilter + ')' : ''}: ${list.length} ${list.length === 1 ? 'Teil' : 'Teile'}\n`;
+  for (const [k, arr] of [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de')))
+    t += `\n${k}:\n` + arr.map((r) => `- ${r.nummer}${r.bez ? ' (' + r.bez + ')' : ''} – bestellt ${fmtDate(r.bestellt)}${r.erhalten ? ', erhalten ' + fmtDate(r.erhalten) : ''}${r.frist === 'late' ? ' – ⚠ NACH FRIST (Kulanz)' : r.erhalten ? ' – in Frist' : ''}${r.grund ? ' – ' + r.grund : ''}`).join('\n') + '\n';
+  return t.trim();
+}
+$('#retShare').onclick = () => { $('#shareTitle').textContent = 'Retouren'; $('#shareBox').textContent = retText(); $('#shareDlg').hidden = false; };
+
+function showNotOrdered(od) {
+  const r = $('#result'); current = { warn: true, hits: [] };
+  const l = od.last;
+  r.className = 'warn';
+  r.innerHTML = `<div class="lbl">Achtung</div><div class="kunde">Für ${fmtLong(activeDate)} nicht bestellt</div>
+    <div class="meta">Nr. <b>${esc(od.nummer)}</b>${l && l.bez ? ' · ' + esc(l.bez) : ''}</div>
+    <div class="meta muted">${l ? `Zuletzt bestellt am ${fmtDate(l.datum)} für ${esc(l.kunde)} / ${esc(l.owner)}` : 'In keiner Liste gefunden'}</div>
+    <div class="row actions"><button class="btn" id="rNext">Weiter</button></div>`;
+  r.hidden = false; $('#rNext').onclick = nextScan; warnSound(); setStatus('');
+  r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function showAssign(code, th) {
+  const r = $('#result'); current = { assign: true, hits: [] };
+  const render = (q) => {
+    const nq = Matcher.norm(q || '');
+    const cand = items.map((it, i) => ({ it, i })).filter(({ it }) => onDay(it) && (!nq || Matcher.norm(it.nummer + it.bez + it.kunde).includes(nq)))
+      .sort((a, b) => ((a.it.done || 0) >= (a.it.qty || 1)) - ((b.it.done || 0) >= (b.it.qty || 1)) || a.it.kunde.localeCompare(b.it.kunde, 'de')).slice(0, 40);
+    $('#assignList').innerHTML = cand.map(({ it }) => `<button class="btn small" data-id="${esc(it.id)}"><b>${esc(it.nummer)}</b>&nbsp;· ${esc(it.kunde)} / ${esc(it.owner)}${it.bez ? ' · ' + esc(it.bez) : ''}</button>`).join('') || '<div class="muted">Nichts gefunden.</div>';
+    $('#assignList').querySelectorAll('[data-id]').forEach((b) => b.onclick = () => {
+      const i = idxOf(b.dataset.id); if (i < 0) return;
+      const k = Matcher.norm(items[i].nummer); memory.ean[Matcher.norm(code)] = k; const p = partOf(k, items[i]); if (!p.ean.includes(Matcher.norm(code))) p.ean.push(Matcher.norm(code));
+      dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon();
+      showResult([{ i, score: 200, exact: true }], { barcode: code, text: '', thumb: th });
+    });
+  };
+  r.className = 'assign';
+  r.innerHTML = `<div class="lbl">Neuer Barcode</div><div class="meta" style="font-size:20px;font-weight:800">Zu welchem Teil gehört das?</div>
+    <div class="meta muted">Barcode ${esc(code)} – einmal zuordnen, danach erkennen ihn alle Handys sofort.</div>
+    <input type="text" id="assignQ" placeholder="Suchen, z. B. 5w30 oder Kunde" style="margin-top:8px" autocomplete="off">
+    <div class="pick" id="assignList"></div>
+    <div class="row actions"><button class="btn" id="rNext">Abbrechen</button></div>`;
+  r.hidden = false; render('');
+  $('#assignQ').oninput = (e) => render(e.target.value);
+  $('#rNext').onclick = () => { unkCode = null; unkCount = 0; ignoreCodes.add(code); nextScan(); };
+  feedback(); setStatus(''); r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+const ignoreCodes = new Set();
+function warnSound() {
+  try { navigator.vibrate && navigator.vibrate([120, 80, 120, 80, 120]); } catch (e) {}
+  try { if (!audioCtx) return; [0, 0.22].forEach((t) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'square'; o.frequency.value = 220; g.gain.value = 0.12; o.connect(g); g.connect(audioCtx.destination); o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.16); }); } catch (e) {}
+}
 function hideResult() { $('#result').hidden = true; current = null; }
-function nextScan() { hideResult(); lastHit = null; $('#manualIn').value = ''; resumeLoop(); }
+function nextScan() { hideResult(); lastHit = null; lastWarn = null; unkCount = 0; $('#manualIn').value = ''; resumeLoop(); }
 function feedback() {
   try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
-  try {
-    if (!audioCtx) return; const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.frequency.value = 1320; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.12);
-  } catch (e) {}
+  try { if (!audioCtx) return; if (audioCtx.state === 'suspended') audioCtx.resume(); const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = 1320; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.12); } catch (e) {}
 }
 function setStatus(t) { $('#status').textContent = t; }
 
-// ---------- Kunden-Übersicht ----------
+// ---------- Kunden ----------
 let onlyOpen = false;
 $('#toggleOpen').onclick = () => { onlyOpen = !onlyOpen; $('#toggleOpen').textContent = onlyOpen ? 'Alle zeigen' : 'Nur offene'; renderKunden(); };
 $('#filter').oninput = renderKunden;
+function renderOwners() {
+  const owners = Object.keys(lists).sort();
+  if (ownerFilter !== 'Alle' && !owners.includes(ownerFilter)) ownerFilter = 'Alle';
+  $('#owners').innerHTML = owners.length > 1 ? ['Alle', ...owners].map((o) => `<button class="chip ${o === ownerFilter ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('') : '';
+  $('#owners').querySelectorAll('.chip').forEach((b) => b.onclick = () => { ownerFilter = b.dataset.o; store.set('ownerFilter', ownerFilter); renderAll(); });
+}
+// ---------- Übergabe (alles erhalten + optionales Foto) ----------
+function fnv(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
+const hoKey = (owner, kunde, datum) => 'H|' + owner + '|' + kunde + '|' + datum;
+const hoPhotoKey = (k) => 'H' + fnv(k);
+let hoTarget = null;
+function takeHandoverPhoto(k, label) { hoTarget = { k, label }; $('#hoIn').click(); }
+$('#hoIn').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f || !hoTarget) return;
+  const { k } = hoTarget; hoTarget = null;
+  try {
+    const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => { const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im; });
+    const sc = Math.min(1, 1280 / Math.max(img.width, img.height)); const cv = $('#cv2'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); const data = cv.toDataURL('image/jpeg', 0.75);
+    const pk = hoPhotoKey(k); const at = nowIso();
+    photoMem[pk] = data; idb.set(pk, data);
+    checks[k] = { n: 0, photo: true, by: cfg.name, at }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh();
+    ensureConn().then(() => Sync.writeFile(conn, 'photos/' + pk + '.enc', { img: data, at, by: cfg.name }, null, (r, l) => l, 'Übergabe-Foto')).then(() => syncSoon(300)).catch(() => syncSoon());
+  } catch (err) { setStatus('Foto konnte nicht gespeichert werden: ' + err.message); }
+};
+async function showHandover(k, title) {
+  const c = checks[k]; if (!c || !c.photo) return;
+  $('#photoTitle').textContent = title; $('#photoImg').src = ''; $('#photoCap').textContent = 'Lade Foto…'; $('#photoDlg').hidden = false;
+  const p = await getPhoto(hoPhotoKey(k));
+  if (p) { $('#photoImg').src = p; $('#photoCap').textContent = `Übergabe-Foto vom ${dayTime(c.at)} · ${c.by}`; } else $('#photoCap').textContent = 'Foto noch nicht verfügbar (keine Verbindung?)';
+  $('#photoNew').onclick = () => { $('#photoDlg').hidden = true; takeHandoverPhoto(k, title); };
+}
+$('#photoClose').onclick = () => { $('#photoDlg').hidden = true; };
+
+// ---------- Kundenkarte: Adresse, Telefon, Standort, Fotos ----------
+const hasPlace = (ck) => { const k = kunden[ck]; return !!(k && (k.adresse || k.lat)); };
+const ckLabel = (ck) => { const [o, ...r] = ck.split('|'); return r.join('|') + (Object.keys(lists).length > 1 ? ' / ' + o : ''); };
+let kCur = null;
+function saveKunde(ck, patch) {
+  kunden[ck] = { ...(kunden[ck] || { fotos: [] }), ...patch, at: nowIso(), by: cfg.name };
+  dirty.kunden = (dirty.kunden || 0) + 1; persist(); syncSoon(800); renderKunden();
+}
+function mapsUrl(k) {
+  const dest = k.lat ? `${k.lat},${k.lng}` : k.adresse.replace(/\s*\n\s*/g, ', ');
+  return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(dest);
+}
+function openUrl(u) { const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+async function askRoute(ck) {
+  const k = kunden[ck]; if (!k || !(k.adresse || k.lat)) return;
+  $('#routeText').innerHTML = `Route zu <b>${esc(ckLabel(ck))}</b> in Google Maps öffnen?${k.adresse ? '<div class="muted" style="font-size:14px;margin-top:4px">' + esc(k.adresse) + '</div>' : ''}${k.lat ? '<div class="muted" style="font-size:13px">📍 genauer Standort gespeichert</div>' : ''}`;
+  $('#routeImgs').innerHTML = (k.fotos || []).map((f) => `<img data-ph="${esc(f.pk)}" hidden alt="">${f.text ? `<div class="muted" style="font-size:14px;margin:-4px 0 8px">${esc(f.text)}</div>` : ''}`).join('');
+  fillThumbs($('#routeImgs')); $('#routeDlg').hidden = false;
+  $('#routeYes').onclick = () => { $('#routeDlg').hidden = true; openUrl(mapsUrl(k)); };
+  $('#routeNo').onclick = () => { $('#routeDlg').hidden = true; };
+}
+function openKunde(ck) {
+  kCur = ck; const k = kunden[ck] || {};
+  $('#kTitle').textContent = ckLabel(ck); $('#kAdr').value = k.adresse || ''; $('#kTel').value = k.tel || ''; $('#kMsg').textContent = '';
+  renderKunde(); $('#kDlg').hidden = false;
+}
+function renderKunde() {
+  const k = kunden[kCur] || {}; const fotos = k.fotos || [];
+  $('#kRoute').disabled = !(k.adresse || k.lat); $('#kCall').disabled = !k.tel; $('#kCopy').disabled = !k.adresse;
+  $('#kGps').innerHTML = k.lat ? `📍 Standort gespeichert am ${dayTime(k.gpsAt)} von ${esc(k.gpsBy || '')}${k.acc ? ' (± ' + Math.round(k.acc) + ' m)' : ''} · <u id="kGpsDel" style="cursor:pointer">löschen</u>` : 'Noch kein genauer Standort gespeichert.';
+  if ($('#kGpsDel')) $('#kGpsDel').onclick = async () => { if (await confirmDlg('Gespeicherten Standort löschen?')) { saveKunde(kCur, { lat: null, lng: null, acc: null, gpsAt: null }); renderKunde(); } };
+  $('#kPhotos').innerHTML = fotos.map((f, i) => `<div class="kph"><img data-ph="${esc(f.pk)}" hidden alt=""><input type="text" data-cap="${i}" value="${esc(f.text || '')}" placeholder="Kurzer Text, z. B. Tor links, Klingel Werkstatt">
+      <div class="muted" style="font-size:12px;margin-top:4px">${dayTime(f.at)} · ${esc(f.by || '')}</div>
+      <div class="row" style="margin-top:6px"><button class="btn small" data-rep="${i}">Ersetzen</button><button class="btn small ghost" data-del="${i}">Löschen</button></div></div>`).join('') +
+    (fotos.length < 3 ? '<button class="btn" id="kAddPh">📷 Foto hinzufügen</button>' : '');
+  fillThumbs($('#kPhotos'));
+  $('#kPhotos').querySelectorAll('[data-cap]').forEach((inp) => inp.onchange = () => { const fs = (kunden[kCur].fotos || []).slice(); fs[+inp.dataset.cap] = { ...fs[+inp.dataset.cap], text: inp.value.trim() }; saveKunde(kCur, { fotos: fs }); });
+  $('#kPhotos').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { if (!(await confirmDlg('Foto löschen?'))) return; const fs = (kunden[kCur].fotos || []).slice(); fs.splice(+b.dataset.del, 1); saveKunde(kCur, { fotos: fs }); renderKunde(); });
+  $('#kPhotos').querySelectorAll('[data-rep]').forEach((b) => b.onclick = () => addPlacePhoto(+b.dataset.rep));
+  if ($('#kAddPh')) $('#kAddPh').onclick = () => addPlacePhoto(-1);
+}
+// Foto aufnehmen -> verkleinert, verschlüsselt, für alle
+let pickRes = null;
+function pickPhoto() { return new Promise((res) => { pickRes = res; $('#kIn').click(); }); }
+$('#kIn').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; const res = pickRes; pickRes = null; if (!f || !res) return;
+  const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => { const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im; });
+  const sc = Math.min(1, 1280 / Math.max(img.width, img.height)); const cv = $('#cv2'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+  cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); res(cv.toDataURL('image/jpeg', 0.75));
+};
+async function addPlacePhoto(replaceIdx) {
+  const ck = kCur; const data = await pickPhoto(); if (!data || !kunden) return;
+  const pk = 'K' + fnv(ck) + Date.now().toString(36); const at = nowIso();
+  photoMem[pk] = data; idb.set(pk, data);
+  ensureConn().then(() => Sync.writeFile(conn, 'photos/' + pk + '.enc', { img: data, at, by: cfg.name }, null, (r, l) => l, 'Ortsfoto')).catch(() => {});
+  const fs = ((kunden[ck] || {}).fotos || []).slice(); const entry = { pk, text: replaceIdx >= 0 && fs[replaceIdx] ? fs[replaceIdx].text : '', at, by: cfg.name };
+  if (replaceIdx >= 0) fs[replaceIdx] = entry; else fs.push(entry);
+  saveKunde(ck, { fotos: fs.slice(0, 3) }); if (kCur === ck && !$('#kDlg').hidden) renderKunde();
+}
+$('#kClose').onclick = () => { $('#kDlg').hidden = true; kCur = null; };
+$('#kSave').onclick = () => { saveKunde(kCur, { adresse: $('#kAdr').value.trim(), tel: $('#kTel').value.trim() }); $('#kMsg').innerHTML = '<span class="ok-msg">Gespeichert ✓ – alle Handys sehen es.</span>'; renderKunde(); };
+$('#kRoute').onclick = () => { const k = kunden[kCur]; if (k) openUrl(mapsUrl(k)); };
+$('#kCall').onclick = () => { const k = kunden[kCur]; if (k && k.tel) location.href = 'tel:' + k.tel.replace(/[^\d+]/g, ''); };
+$('#kCopy').onclick = async () => { const k = kunden[kCur]; if (!k) return; try { await navigator.clipboard.writeText(k.adresse); $('#kMsg').innerHTML = '<span class="ok-msg">Adresse kopiert ✓</span>'; } catch (e) { $('#kAdr').select(); $('#kMsg').textContent = 'Adresse markiert – jetzt kopieren.'; } };
+$('#kHere').onclick = () => {
+  if (!navigator.geolocation) { $('#kMsg').innerHTML = '<span class="err-msg">Standort ist auf diesem Gerät nicht verfügbar.</span>'; return; }
+  const ck = kCur; $('#kHere').disabled = true; $('#kMsg').textContent = 'Suche Standort…';
+  navigator.geolocation.getCurrentPosition(async (p) => {
+    $('#kHere').disabled = false;
+    saveKunde(ck, { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: p.coords.accuracy, gpsAt: nowIso(), gpsBy: cfg.name });
+    $('#kMsg').innerHTML = `<span class="ok-msg">Standort gespeichert ✓ (± ${Math.round(p.coords.accuracy)} m)</span>`; renderKunde();
+    const n = ((kunden[ck] || {}).fotos || []).length;
+    if (n < 3) { const c = await choiceDlg('Foto vom Eingang dazu?', [{ label: '📷 Mit Foto', value: 'foto', cls: 'primary' }, { label: 'Ohne Foto', value: '' }]); if (c) addPlacePhoto(-1); }
+  }, (err) => {
+    $('#kHere').disabled = false;
+    $('#kMsg').innerHTML = '<span class="err-msg">' + (err.code === 1 ? 'Standort nicht erlaubt – bitte in den Handy-Einstellungen für die App erlauben.' : 'Standort nicht gefunden – draußen nochmal versuchen.') + '</span>';
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+};
+
 function renderKunden() {
   const q = $('#filter').value.trim().toLowerCase(); const nq = Matcher.norm(q);
   const groups = new Map();
   items.forEach((it, i) => {
+    if (!onDay(it) || !inFilter(it)) return;
     if (q && !(it.kunde || '').toLowerCase().includes(q) && !(nq && Matcher.norm(it.nummer).includes(nq))) return;
-    const k = it.kunde || '(ohne Kunde)'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i);
+    const k = it.owner + '|' + (it.kunde || '(ohne Kunde)'); if (!groups.has(k)) groups.set(k, { kunde: it.kunde || '(ohne Kunde)', owner: it.owner, ix: [] }); groups.get(k).ix.push(i);
   });
-  const arr = [...groups.entries()].map(([k, ix]) => ({ k, ix, done: ix.filter(isDone).length }))
+  const multi = Object.keys(lists).length > 1;
+  const arr = [...groups.values()].map((g) => ({ ...g, done: g.ix.filter(isDone).length }))
     .filter((g) => !onlyOpen || g.done < g.ix.length)
-    .sort((a, b) => (a.done === a.ix.length) - (b.done === b.ix.length) || a.k.localeCompare(b.k, 'de'));
+    .sort((a, b) => (a.done === a.ix.length) - (b.done === b.ix.length) || a.kunde.localeCompare(b.kunde, 'de') || a.owner.localeCompare(b.owner));
   $('#kundenList').innerHTML = arr.length ? arr.map((g) => `
     <div class="kgroup">
-      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span>${esc(g.k)}</span><span class="cnt">${g.done} / ${g.ix.length}${g.done === g.ix.length ? ' ✓' : ''}</span></div>
+      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span><span class="kname" data-ck="${esc(g.owner + '|' + g.kunde)}">${esc(g.kunde)}</span>${multi ? `<span class="tag">${esc(g.owner)}</span>` : ''}</span><span class="r">${hasPlace(g.owner + '|' + g.kunde) ? `<button class="mapbtn" data-route="${esc(g.owner + '|' + g.kunde)}" aria-label="Route">📍</button>` : ''}<span class="cnt">${g.done} / ${g.ix.length}${g.done === g.ix.length ? ' ✓' : ''}</span>${(() => { const hk = hoKey(g.owner, g.kunde, activeDate); const hp = checks[hk] && checks[hk].photo; return (hp || g.done === g.ix.length) ? `<button class="hobtn ${hp ? 'has' : ''}" data-ho="${esc(hk)}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Übergabe-Foto">📷${hp ? '' : '+'}</button>` : ''; })()}${g.done < g.ix.length ? `<button class="allbtn" data-all="${esc(g.ix.map((i) => items[i].id).join('\n'))}" data-k="${esc(g.kunde)}" data-hk="${esc(hoKey(g.owner, g.kunde, activeDate))}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Alles erhalten">✓</button>` : ''}</span></div>
       <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i></div>
-      ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const part = !d && (it.done || 0) > 0;
-        return `<div class="item ${d ? 'done' : ''} ${part ? 'part' : ''}" data-i="${i}"><div class="chk">${d ? '✓' : part ? (it.done + '/' + it.qty) : ''}</div>
-          <div><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}</div></div>`; }).join('')}
-    </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${items.length ? 'Nichts gefunden.' : 'Noch keine Liste geladen.'}</div>`;
-  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = () => {
-    const it = items[+el.dataset.i]; const q = it.qty || 1;
-    it.done = (it.done || 0) >= q ? 0 : (it.done || 0) + 1; save();
+      ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const part = !d && (it.done || 0) > 0; const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const mk = brandOf(it);
+        return `<div class="item ${d ? 'done' : ''} ${part ? 'part' : ''}" data-id="${esc(it.id)}"><div class="chk">${d ? '✓' : part ? (it.done + '/' + it.qty) : ''}</div>
+          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ ${esc(it.by)} · ${hhmm(it.at)}</div>` : ''}</div>
+          ${p && p.photo ? `<img class="th" data-ph="${esc(k)}" hidden alt="">` : ''}</div>`; }).join('')}
+    </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${!items.length ? 'Noch keine Liste im Pool.' : q ? 'Nichts gefunden.' : 'Keine Bestellungen an diesem Tag.'}</div>`;
+  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = async () => {
+    const it = items[idxOf(el.dataset.id)]; if (!it) return; const qn = it.qty || 1;
+    const next = (it.done || 0) >= qn ? 0 : (it.done || 0) + 1;
+    if (next === 0 && !(await confirmDlg(`Haken bei ${it.nummer} (${it.kunde}) entfernen?${it.by ? ' Abgehakt von ' + it.by + ' um ' + hhmm(it.at) + '.' : ''}`))) return;
+    setCheck(it, next);
   });
+  $('#kundenList').querySelectorAll('.allbtn').forEach((b) => b.onclick = async (e) => {
+    e.stopPropagation();
+    const ids = b.dataset.all.split('\n'); const open = ids.map(idxOf).filter((i) => i >= 0 && !isDone(i));
+    if (!open.length) return;
+    const choice = await choiceDlg(`${b.dataset.k} hat alles erhalten? Die ${open.length} offenen ${open.length === 1 ? 'Teil wird' : 'Teile werden'} abgehakt.`,
+      [{ label: '📷 Mit Foto', value: 'foto', cls: 'primary' }, { label: '✓ Ohne Foto', value: 'ok', cls: 'ok' }, { label: 'Abbrechen', value: '' }]);
+    if (!choice) return;
+    const at = nowIso(); for (const i of open) checks[items[i].id] = { n: items[i].qty || 1, by: cfg.name, at };
+    dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+    if (choice === 'foto') takeHandoverPhoto(b.dataset.hk, b.dataset.t);
+  });
+  $('#kundenList').querySelectorAll('.kname').forEach((el) => el.onclick = (e) => { e.stopPropagation(); openKunde(el.dataset.ck); });
+  $('#kundenList').querySelectorAll('.mapbtn').forEach((b) => b.onclick = (e) => { e.stopPropagation(); askRoute(b.dataset.route); });
+  $('#kundenList').querySelectorAll('.hobtn').forEach((b) => b.onclick = (e) => {
+    e.stopPropagation(); const k = b.dataset.ho;
+    if (checks[k] && checks[k].photo) showHandover(k, 'Übergabe ' + b.dataset.t); else takeHandoverPhoto(k, b.dataset.t);
+  });
+  fillThumbs($('#kundenList'));
 }
+
+// ---------- Offene Teile als Nachricht ----------
+function openText() {
+  const open = items.filter((it) => onDay(it) && inFilter(it) && (it.done || 0) < (it.qty || 1));
+  if (!open.length) return `Bestellungen vom ${fmtLong(activeDate)}: alles erledigt ✅`;
+  const g = new Map();
+  for (const it of open) { const k = it.kunde + (Object.keys(lists).length > 1 ? ' / ' + it.owner : ''); if (!g.has(k)) g.set(k, []); g.get(k).push(it); }
+  let t = `Noch offen (${fmtLong(activeDate)}${ownerFilter !== 'Alle' ? ', ' + ownerFilter : ''}): ${open.length} ${open.length === 1 ? 'Teil' : 'Teile'}\n`;
+  for (const [k, arr] of [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de'))) {
+    t += `\n${k}:\n` + arr.map((it) => { const rest = (it.qty || 1) - (it.done || 0); return `- ${it.nummer}${it.bez ? ' (' + it.bez + ')' : ''}${(it.qty || 1) > 1 ? ' – noch ' + rest + ' von ' + it.qty : ''}`; }).join('\n') + '\n';
+  }
+  return t.trim();
+}
+$('#shareOpen').onclick = () => { $('#shareTitle').textContent = 'Noch offen'; $('#shareBox').textContent = openText(); $('#shareDlg').hidden = false; };
+$('#shareClose').onclick = () => { $('#shareDlg').hidden = true; };
+$('#shareCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#shareBox').textContent); $('#shareCopy').textContent = 'Kopiert ✓'; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($('#shareBox')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('#shareCopy').textContent = 'Markiert'; }
+  setTimeout(() => $('#shareCopy').textContent = 'Kopieren', 2000);
+};
+$('#shareSend').onclick = async () => {
+  const text = $('#shareBox').textContent;
+  if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  location.href = 'https://wa.me/?text=' + encodeURIComponent(text);
+};
+
+// ---------- Tage ----------
+const WT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+function fmtLong(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; }
+function addDays(iso, n) { const [y, m, d] = iso.split('-').map(Number); const t = new Date(y, m - 1, d + n); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; }
+function latestDate() { const t = isoToday(0); let best = null; for (const it of items) if (it.datum && it.datum <= t && (!best || it.datum > best)) best = it.datum; return best || t; }
+function maxDay() { const t = isoToday(0); let m = t; for (const it of items) if (it.datum && it.datum > m) m = it.datum; return m; }
+function setDay(iso) { const t = maxDay(); if (!iso || iso > t) iso = t; activeDate = iso; hideResult(); rebuild(); renderAll(); }
+$('#dPrev').onclick = () => setDay(addDays(activeDate, -1));
+$('#dNext').onclick = () => setDay(addDays(activeDate, 1));
+$('#dPick').onchange = (e) => { if (e.target.value) setDay(e.target.value); };
+$('.dmid').onclick = (e) => { const p = $('#dPick'); if (e.target !== p && p.showPicker) { try { p.showPicker(); } catch (err) {} } };
+$('#scanDay').onclick = () => show('kunden');
 
 function renderAll() {
-  const total = items.length, done = items.filter((_, i) => isDone(i)).length;
-  $('#progress').textContent = total ? `${done} / ${total} erledigt` : '';
-  const kunden = new Set(items.map((i) => i.kunde)).size;
-  $('#listInfo').textContent = total ? `${total} Positionen · ${kunden} Kunden · ${done} abgehakt` : 'Noch keine Liste geladen.';
-  renderKunden();
+  renderOwners();
+  const day = items.filter((it) => onDay(it) && inFilter(it)); const done = day.filter((it) => (it.done || 0) >= (it.qty || 1)).length;
+  const all = items.filter(onDay); const allDone = all.filter((it) => (it.done || 0) >= (it.qty || 1)).length;
+  const kd = new Set(day.map((i) => i.owner + i.kunde)).size;
+  $('#progress').textContent = day.length ? `${done} / ${day.length} erledigt` : '';
+  const [y, m, d] = activeDate.split('-').map(Number);
+  $('#dText').textContent = `${WT[new Date(y, m - 1, d).getDay()]}, ${fmtLong(activeDate)}`;
+  $('#dSub').textContent = day.length ? `${day.length} ${day.length === 1 ? 'Teil' : 'Teile'} · ${kd} ${kd === 1 ? 'Kunde' : 'Kunden'} · ${done} erledigt` : 'keine Bestellungen';
+  $('#dPick').value = activeDate; $('#dPick').max = maxDay();
+  $('#dNext').disabled = activeDate >= maxDay();
+  $('#scanDay').innerHTML = items.length ? `Scanne alle Listen vom <b>${fmtLong(activeDate)}</b> · ${allDone}/${all.length} erledigt · <u>Tag ändern</u>` : '';
+  renderStand(); renderLists(); renderKunden(); renderRetList(); setDot();
 }
-
+function renderStand() {
+  const owners = Object.keys(lists).sort();
+  const html = owners.length ? 'Stand: ' + owners.map((o) => { const at = lists[o].at; const old = !at || Date.now() - new Date(at).getTime() > 24 * 3600e3;
+    return `<span class="${old ? 'old' : ''}">${old ? '⚠ ' : ''}${esc(o)} ${at ? dayTime(at) : '?'}</span>`; }).join(' · ') : '';
+  $('#stand1').innerHTML = html; $('#stand2').innerHTML = html;
+}
+function renderLists() {
+  const owners = Object.keys(lists).sort();
+  $('#listsBox').innerHTML = owners.length ? owners.map((o) => { const l = lists[o]; const n = (l.items || []).length; const k = new Set((l.items || []).map((x) => x.kunde)).size;
+    return `<div class="lrow"><div><b style="color:var(--text)">${esc(o)}</b><div style="font-size:13px">${n} Positionen · ${k} Kunden${l.at ? '<br>hochgeladen ' + dayTime(l.at) + (l.by ? ' von ' + esc(l.by) : '') : ''}</div></div><button class="btn small ghost" data-del="${esc(o)}">Entfernen</button></div>`; }).join('') : 'Noch keine Liste hochgeladen.';
+  $('#listsBox').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    const o = b.dataset.del;
+    if (!(await confirmDlg(`Liste „${o}“ für alle aus dem Pool entfernen?`))) return;
+    try { await ensureConn(); await Sync.deleteFile(conn, 'lists/' + encodeURIComponent(o) + '.enc', lists[o].sha); delete lists[o]; persist(); refresh(); }
+    catch (e) { alertCard('Entfernen fehlgeschlagen: ' + e.message); }
+  });
+}
 // ---------- Liste importieren ----------
-let parsed = null; // {rows, map}
+let parsed = null; // {rows, header, nc, map, multi, sheetCount}
+const SHEET = -2;  // "Kunde = Name des Reiters"
 
 $('#fileIn').onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name))
+    return alertCard('Das ist ein Bild. Hier bitte die Tabellen-Datei (.xlsx oder .ods) wählen – oder die Zeilen kopieren und unten einfügen.');
   try {
     const buf = await f.arrayBuffer();
-    const rows = /\.xlsx$/i.test(f.name) || isZip(buf) ? await readXlsx(buf) : parseText(new TextDecoder(guessEnc(buf)).decode(buf));
-    startMapping(rows);
+    let sheets;
+    if (isZip(buf)) sheets = await readWorkbook(buf);
+    else {
+      const head = new TextDecoder('latin1').decode(new Uint8Array(buf, 0, Math.min(2000, buf.byteLength)));
+      if ((head.match(/[\x00-\x08\x0e-\x1f]/g) || []).length > 5) return alertCard('Diese Datei kann ich nicht lesen. Bitte als .xlsx, .ods oder CSV speichern.');
+      sheets = [{ name: '', rows: parseText(new TextDecoder(guessEnc(buf)).decode(buf)) }];
+    }
+    startMapping(sheets, f.name);
   } catch (err) { alertCard('Datei konnte nicht gelesen werden: ' + err.message); }
 };
-$('#pasteBtn').onclick = () => { const t = $('#pasteIn').value; if (t.trim()) startMapping(parseText(t)); };
-$('#demoBtn').onclick = () => startMapping(parseText(DEMO));
+$('#pasteBtn').onclick = () => { const t = $('#pasteIn').value; if (t.trim()) startMapping([{ name: '', rows: parseText(t) }]); };
 
 function alertCard(t) { $('#listMsg').textContent = t; }
 function isZip(buf) { const u = new Uint8Array(buf, 0, 4); return u[0] === 0x50 && u[1] === 0x4b; }
@@ -497,143 +1285,299 @@ function parseText(t) {
   });
 }
 
-// Minimaler .xlsx-Leser (ohne externe Bibliothek)
-async function readXlsx(buf) {
+// ZIP lesen (für .xlsx und .ods), ohne externe Bibliothek
+async function openZip(buf) {
   const dv = new DataView(buf), u8 = new Uint8Array(buf);
   let eocd = -1; for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('keine gültige Excel-Datei');
+  if (eocd < 0) throw new Error('keine gültige Tabellen-Datei');
   const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true); const files = {};
   for (let k = 0; k < n; k++) {
     const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
-    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
-    files[name] = { method, csize, lo }; p += 46 + nl + el + cl;
+    files[new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl))] = { method, csize, lo }; p += 46 + nl + el + cl;
   }
-  async function get(name) {
+  return { has: (name) => !!files[name], async get(name) {
     const f = files[name]; if (!f) return null;
     const start = f.lo + 30 + dv.getUint16(f.lo + 26, true) + dv.getUint16(f.lo + 28, true);
     const data = u8.subarray(start, start + f.csize);
     if (f.method === 0) return new TextDecoder().decode(data);
-    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    return await new Response(ds).text();
-  }
-  const xml = (s) => new DOMParser().parseFromString(s, 'application/xml');
-  let sheetPath = 'xl/worksheets/sheet1.xml';
-  try {
-    const wb = xml(await get('xl/workbook.xml')); const rels = xml(await get('xl/_rels/workbook.xml.rels'));
-    const first = wb.getElementsByTagName('sheet')[0]; const rid = first.getAttribute('r:id') || first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
-    for (const r of rels.getElementsByTagName('Relationship')) if (r.getAttribute('Id') === rid) { const t = r.getAttribute('Target'); sheetPath = t.startsWith('/') ? t.slice(1) : 'xl/' + t; }
-  } catch (e) {}
-  const ssTxt = await get('xl/sharedStrings.xml'); const ss = [];
-  if (ssTxt) for (const si of xml(ssTxt).getElementsByTagName('si')) ss.push([...si.getElementsByTagName('t')].map((t) => t.textContent).join(''));
-  const sheet = xml(await get(sheetPath)); const rows = [];
-  const colIdx = (ref) => { const m = /^([A-Z]+)/.exec(ref || ''); let c = 0; if (m) for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
-  for (const row of sheet.getElementsByTagName('row')) {
-    const out = []; let auto = 0;
-    for (const c of row.getElementsByTagName('c')) {
-      const ci = c.getAttribute('r') ? colIdx(c.getAttribute('r')) : auto; auto = ci + 1;
-      const t = c.getAttribute('t'); const v = c.getElementsByTagName('v')[0];
-      let val = '';
-      if (t === 's') val = ss[+v?.textContent] ?? ''; else if (t === 'inlineStr') val = [...c.getElementsByTagName('t')].map((x) => x.textContent).join(''); else val = v ? v.textContent : '';
-      while (out.length < ci) out.push(''); out[ci] = String(val).trim();
-    }
-    rows.push(out);
-  }
-  return rows;
+    return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  } };
+}
+const xml = (s) => new DOMParser().parseFromString(s, 'application/xml');
+
+async function readWorkbook(buf) {
+  const z = await openZip(buf);
+  if (z.has('content.xml')) return readOds(await z.get('content.xml'));
+  if (z.has('xl/workbook.xml')) return readXlsx(z);
+  throw new Error('unbekanntes Dateiformat');
 }
 
-const HEAD = { nr: /art(ikel)?\.?\s*-?\s*n(umme)?r|^nr\.?$|^nummer|teile.?n|^no\.?$/i, kunde: /kunde|empf|^name$|auftragg/i, bez: /bezeich|beschreib|artikel$|^teil$|produkt/i };
-function detectColumns(rows) {
-  rows = rows.filter((r) => r.filter((c) => c).length >= 2);
+// OpenOffice / LibreOffice (.ods): alle Reiter
+function readOds(txt) {
+  const T = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0', O = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0', X = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0';
+  const doc = xml(txt); const sheets = [];
+  for (const tb of doc.getElementsByTagNameNS(T, 'table')) {
+    const rows = [];
+    for (const tr of tb.getElementsByTagNameNS(T, 'table-row')) {
+      const out = []; let col = 0;
+      for (const c of tr.children) {
+        if (c.localName !== 'table-cell' && c.localName !== 'covered-table-cell') continue;
+        const rep = Math.min(+(c.getAttributeNS(T, 'number-columns-repeated') || 1), 60);
+        const type = c.getAttributeNS(O, 'value-type');
+        let v = type === 'date' ? (c.getAttributeNS(O, 'date-value') || '').slice(0, 10)
+          : [...c.getElementsByTagNameNS(X, 'p')].map((p) => p.textContent).join(' ').trim();
+        if (type === 'float' && /^\d+$/.test(c.getAttributeNS(O, 'value') || '') && v.replace(/\D/g, '') !== c.getAttributeNS(O, 'value')) v = c.getAttributeNS(O, 'value');
+        for (let r = 0; r < rep; r++) { if (v) out[col] = v; col++; }
+        if (col > 60) break;
+      }
+      for (let i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = '';
+      const rrep = +(tr.getAttributeNS(T, 'number-rows-repeated') || 1);
+      if (out.some(Boolean)) for (let r = 0; r < Math.min(rrep, 500); r++) rows.push(out.slice()); else rows.push([]);
+    }
+    sheets.push({ name: tb.getAttributeNS(T, 'name') || '', rows });
+  }
+  return sheets;
+}
+
+// Excel (.xlsx): alle Reiter
+async function readXlsx(z) {
+  const wb = xml(await z.get('xl/workbook.xml')); const rels = xml((await z.get('xl/_rels/workbook.xml.rels')) || '<r/>');
+  const target = {}; for (const r of rels.getElementsByTagName('Relationship')) { const t = r.getAttribute('Target'); target[r.getAttribute('Id')] = t.startsWith('/') ? t.slice(1) : 'xl/' + t.replace(/^\.\//, ''); }
+  const ssTxt = await z.get('xl/sharedStrings.xml'); const ss = [];
+  if (ssTxt) for (const si of xml(ssTxt).getElementsByTagName('si')) ss.push([...si.getElementsByTagName('t')].map((t) => t.textContent).join(''));
+  // Datumsformate erkennen
+  const dateStyles = new Set();
+  try {
+    const st = xml(await z.get('xl/styles.xml')); const custom = {};
+    for (const nf of st.getElementsByTagName('numFmt')) custom[nf.getAttribute('numFmtId')] = nf.getAttribute('formatCode');
+    const xfs = st.getElementsByTagName('cellXfs')[0];
+    [...(xfs ? xfs.getElementsByTagName('xf') : [])].forEach((xf, i) => {
+      const id = +xf.getAttribute('numFmtId'); const code = custom[id] || '';
+      if ((id >= 14 && id <= 22) || (id >= 165 && /[dy]/i.test(code.replace(/"[^"]*"|\[[^\]]*\]/g, '')) && !/[#0]/.test(code))) dateStyles.add(i);
+    });
+  } catch (e) {}
+  const colIdx = (ref) => { const m = /^([A-Z]+)/.exec(ref || ''); let c = 0; if (m) for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
+  const sheets = [];
+  for (const sh of wb.getElementsByTagName('sheet')) {
+    const rid = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    const path = target[rid]; if (!path) continue;
+    const sx = await z.get(path); if (!sx) continue;
+    const rows = [];
+    for (const row of xml(sx).getElementsByTagName('row')) {
+      const ri = +row.getAttribute('r') - 1; while (rows.length < ri && rows.length < 100000) rows.push([]);
+      const out = []; let auto = 0;
+      for (const c of row.getElementsByTagName('c')) {
+        const ci = c.getAttribute('r') ? colIdx(c.getAttribute('r')) : auto; auto = ci + 1;
+        const t = c.getAttribute('t'); const v = c.getElementsByTagName('v')[0];
+        let val = '';
+        if (t === 's') val = ss[+v?.textContent] ?? ''; else if (t === 'inlineStr') val = [...c.getElementsByTagName('t')].map((x) => x.textContent).join(''); else val = v ? v.textContent : '';
+        if (val && !t && dateStyles.has(+c.getAttribute('s')) && /^\d+(\.\d+)?$/.test(val)) val = serialToIso(+val);
+        while (out.length < ci) out.push(''); out[ci] = String(val).trim();
+      }
+      rows.push(out);
+    }
+    sheets.push({ name: sh.getAttribute('name') || '', rows });
+  }
+  return sheets;
+}
+function serialToIso(n) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 864e5); return d.toISOString().slice(0, 10); }
+function toIsoDate(v) {
+  v = String(v || '').trim(); let m;
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v))) return `${m[1]}-${m[2]}-${m[3]}`;
+  if ((m = /^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2}|\d{4})$/.exec(v))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  if (/^\d{5}(\.\d+)?$/.test(v) && +v > 35000 && +v < 60000) return serialToIso(+v);
+  return null;
+}
+const fmtDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y.slice(2)}`; };
+function isoToday(off = 0) { const d = new Date(); d.setDate(d.getDate() + off); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+const isPrice = (v) => /€|EUR/i.test(v) || /^-?\d{1,6}[.,]\d{2}$/.test(v);
+
+const HEAD = { nr: /art(ikel)?\.?\s*-?\s*n(umme)?r|^nr\.?$|^nummer|teile.?n|^no\.?$/i, kunde: /kunde|empf|^name$|auftragg/i, bez: /bezeich|beschreib|artikel$|^teil$|produkt/i, datum: /datum|^date$|^tag$/i };
+function detectColumns(rows, multi) {
+  rows = rows.filter((r) => r.filter((c) => c).length >= 1);
   let header = null;
-  if (rows.length && rows[0].some((c) => HEAD.nr.test(c) || HEAD.kunde.test(c))) header = rows.shift();
+  if (!multi && rows.length && rows[0].some((c) => HEAD.nr.test(c) || HEAD.kunde.test(c))) header = rows.shift();
   const nc = Math.max(0, ...rows.map((r) => r.length));
-  const isDate = (v) => /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(v) || /^\d{4}-\d{2}-\d{2}/.test(v) || (/^\d{5}(\.\d+)?$/.test(v) && +v > 35000 && +v < 60000);
+  const isDate = (v) => !!toIsoDate(v);
   const st = [];
   for (let c = 0; c < nc; c++) {
-    const vals = rows.map((r) => r[c] || '').filter(Boolean); const N = rows.length || 1;
+    const vals = rows.map((r) => r[c] || '').filter(Boolean); const N = rows.length || 1; const V = vals.length || 1;
     st.push({ c, fill: vals.length / N,
-      date: vals.filter(isDate).length / (vals.length || 1),
-      part: vals.filter((v) => /\d/.test(v) && v.length >= 4 && v.length <= 25 && !isDate(v)).length / N,
-      alpha: vals.filter((v) => !/\d/.test(v)).length / (vals.length || 1),
-      uniq: new Set(vals).size / (vals.length || 1) });
+      date: vals.filter(isDate).length / V,
+      part: vals.filter((v) => /\d/.test(v) && v.length >= 4 && v.length <= 25 && !isDate(v) && !isPrice(v)).length / N,
+      price: vals.filter(isPrice).length / V,
+      alpha: vals.filter((v) => !/\d/.test(v)).length / V,
+      uniq: new Set(vals).size / V });
   }
-  const map = { nr: -1, kunde: -1, bez: -1 };
-  if (header) header.forEach((h, c) => { for (const k of ['nr', 'kunde', 'bez']) if (map[k] < 0 && HEAD[k].test(h)) map[k] = c; });
-  const usable = st.filter((s) => s.fill > 0.3 && s.date < 0.5);
+  const map = { nr: -1, kunde: multi ? SHEET : -1, bez: -1, datum: -1 };
+  if (header) header.forEach((h, c) => { for (const k of ['nr', 'kunde', 'bez', 'datum']) if (map[k] < 0 && HEAD[k].test(h)) map[k] = c; });
+  if (map.datum < 0) { const d = st.filter((s) => s.fill > 0.2 && s.date > 0.6).sort((a, b) => b.fill - a.fill)[0]; if (d) map.datum = d.c; }
+  const usable = st.filter((s) => s.fill > 0.15 && s.date < 0.5 && s.price < 0.5 && s.c !== map.datum);
   if (map.nr < 0) { const b = usable.slice().sort((a, b) => b.part - a.part)[0]; if (b) map.nr = b.c; }
-  if (map.kunde < 0) { const k = usable.filter((s) => s.c !== map.nr && s.alpha > 0.6).sort((a, b) => b.c - a.c)[0]; if (k) map.kunde = k.c; }
-  if (map.bez < 0) { const b = usable.filter((s) => s.c !== map.nr && s.c !== map.kunde).sort((a, b) => b.fill - a.fill || b.uniq - a.uniq)[0]; if (b) map.bez = b.c; }
+  if (map.kunde === -1) { const k = usable.filter((s) => s.c !== map.nr && s.alpha > 0.6).sort((a, b) => b.c - a.c)[0]; if (k) map.kunde = k.c; }
+  if (map.bez < 0) { const b = usable.filter((s) => s.c !== map.nr && s.c !== map.kunde).sort((a, b) => b.alpha * b.fill - a.alpha * a.fill)[0]; if (b) map.bez = b.c; }
   return { rows, header, nc, map };
 }
 
-function startMapping(rows) {
+function startMapping(sheets, fileName) {
   $('#listMsg').textContent = '';
-  parsed = detectColumns(rows);
-  if (!parsed.rows.length) return alertCard('Keine Zeilen gefunden.');
+  const used = sheets.filter((s) => s.rows.some((r) => r.filter(Boolean).length >= 2));
+  if (!used.length) return alertCard('Keine Zeilen gefunden.');
+  const multi = used.length > 1;
+  const all = [];
+  for (const s of used) for (const r of s.rows) { const rr = r.slice(); rr._sheet = s.name; all.push(rr); }
+  parsed = detectColumns(all, multi); parsed.multi = multi; parsed.sheetCount = used.length;
+  // Datum nach unten auffüllen (Zeilen ohne Datum gehören zum Datum darüber), je Reiter
+  computeDates();
+  const ds = parsed.dates;
+  if (ds.length) {
+    const y = isoToday(-1), t = isoToday(0);
+    parsed.sel = new Set(ds); // komplette Tabelle übernehmen
+  } else parsed.sel = new Set();
   const card = $('#mapCard'); card.hidden = false;
-  const colName = (c) => { const letter = String.fromCharCode(65 + c); const ex = (parsed.rows.find((r) => r[c]) || [])[c] || ''; return `Spalte ${letter}${parsed.header && parsed.header[c] ? ' – ' + parsed.header[c] : ''}${ex ? '  (z. B. ' + ex.slice(0, 24) + ')' : ''}`; };
-  for (const [sel, key, optional] of [['#mapNr', 'nr'], ['#mapKunde', 'kunde'], ['#mapBez', 'bez', true]]) {
+  $('#sheetInfo').innerHTML = multi ? `<b>${used.length} Reiter</b> gefunden – jeder Reiter ist ein Kunde (${used.slice(0, 6).map((s) => esc(s.name)).join(', ')}${used.length > 6 ? ' …' : ''}).` : '';
+  const colName = (c) => { const letter = String.fromCharCode(65 + c); const ex = (parsed.rows.find((r) => r[c]) || [])[c] || ''; return `Spalte ${letter}${parsed.header && parsed.header[c] ? ' – ' + parsed.header[c] : ''}${ex ? '  (z. B. ' + (toIsoDate(ex) ? fmtDate(toIsoDate(ex)) : ex.slice(0, 24)) + ')' : ''}`; };
+  for (const [sel, key, optional] of [['#mapNr', 'nr'], ['#mapKunde', 'kunde'], ['#mapBez', 'bez', true], ['#mapDatum', 'datum', true]]) {
     const s = $(sel);
-    s.innerHTML = (optional ? '<option value="-1">— keine —</option>' : '') + Array.from({ length: parsed.nc }, (_, c) => `<option value="${c}">${esc(colName(c))}</option>`).join('');
-    s.value = String(parsed.map[key]); s.onchange = () => { parsed.map[key] = +s.value; preview(); };
+    s.innerHTML = (key === 'kunde' && multi ? `<option value="${SHEET}">Name des Reiters</option>` : '') + (optional ? '<option value="-1">— keine —</option>' : '') + Array.from({ length: parsed.nc }, (_, c) => `<option value="${c}">${esc(colName(c))}</option>`).join('');
+    s.value = String(parsed.map[key]);
+    s.onchange = () => { parsed.map[key] = +s.value; if (key === 'datum') { computeDates(); parsed.sel = new Set(parsed.dates.slice(0, 1)); } preview(); };
   }
+  const guess = (fileName || '').replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').trim();
+  const known = Object.keys(lists).find((o) => o.toLowerCase() === guess.toLowerCase());
+  $('#ownerIn').value = known || (guess ? guess.charAt(0).toUpperCase() + guess.slice(1) : '');
+  $('#ownerList').innerHTML = Object.keys(lists).map((o) => `<option value="${esc(o)}">`).join('');
+  updUploadBtn();
   preview(); card.scrollIntoView({ behavior: 'smooth' });
 }
+function computeDates() {
+  const dc = parsed.map.datum; let last = null, sheet = null; const cnt = {};
+  for (const r of parsed.rows) {
+    if (r._sheet !== sheet) { sheet = r._sheet; last = null; }
+    const d = dc >= 0 ? toIsoDate(r[dc]) : null; if (d) last = d;
+    r._date = dc >= 0 ? last : null;
+    if (r._date && validNr(r[parsed.map.nr])) cnt[r._date] = (cnt[r._date] || 0) + 1;
+  }
+  parsed.dates = Object.keys(cnt).sort().reverse(); parsed.dateCnt = cnt;
+}
+const validNr = (v) => { v = (v || '').trim(); return !!v && /[0-9]/.test(v) && /[0-9A-Za-z]/.test(v) && !isPrice(v) && !toIsoDate(v); };
 function mappedItems() {
-  const { nr, kunde, bez } = parsed.map;
-  return parsed.rows.map((r) => {
+  const { nr, kunde, bez } = parsed.map; const useDate = parsed.map.datum >= 0 && parsed.dates.length;
+  return parsed.rows.filter((r) => validNr(r[nr]) && (!useDate || parsed.sel.has(r._date))).map((r) => {
     const b = bez >= 0 ? r[bez] || '' : ''; const m = /(?:^|\s)(\d{1,3})\s*[x×]\s/i.exec(' ' + b + ' ');
-    return { nummer: (r[nr] || '').trim(), kunde: (r[kunde] || '').trim(), bez: b.trim(), qty: m ? +m[1] : 1, done: 0 };
-  }).filter((x) => x.nummer && /[0-9A-Za-z]/.test(x.nummer));
+    return { nummer: r[nr].trim(), kunde: (kunde === SHEET ? r._sheet : r[kunde] || '').trim(), bez: b.trim(), qty: m ? +m[1] : 1, done: 0, datum: r._date || isoToday(0) };
+  });
 }
 function preview() {
-  const m = mappedItems();
-  $('#mapPrev').innerHTML = `<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen erkannt. Vorschau:</div>
-    <table class="prev"><tr><th>Nummer</th><th>Kunde</th><th>Menge</th></tr>${m.slice(0, 6).map((x) => `<tr><td>${esc(x.nummer)}</td><td>${esc(x.kunde)}</td><td>${x.qty}</td></tr>`).join('')}</table>`;
+  const box = $('#dateBox'); const ds = parsed.dates || [];
+  box.hidden = !(parsed.map.datum >= 0 && ds.length);
+  if (!box.hidden) {
+    const shown = ds.slice(0, 12);
+    $('#dateChips').innerHTML = shown.map((d) => `<button class="chip ${parsed.sel.has(d) ? 'on' : ''}" data-d="${d}">${fmtDate(d)} · ${parsed.dateCnt[d]}</button>`).join('') +
+      (ds.length > 1 ? `<button class="chip" data-all="1">${parsed.sel.size === ds.length ? 'Keine' : 'Alle'}</button>` : '');
+    $('#dateChips').querySelectorAll('.chip').forEach((b) => b.onclick = () => {
+      if (b.dataset.all) parsed.sel = parsed.sel.size === ds.length ? new Set() : new Set(ds);
+      else parsed.sel.has(b.dataset.d) ? parsed.sel.delete(b.dataset.d) : parsed.sel.add(b.dataset.d);
+      preview();
+    });
+  }
+  const m = mappedItems(); const kunden = new Set(m.map((x) => x.kunde)).size;
+  $('#mapPrev').innerHTML = `<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen${parsed.multi ? ' von ' + kunden + ' Kunden' : ''} werden übernommen. Vorschau:</div>
+    <table class="prev"><tr><th>Nummer</th><th>Kunde</th>${parsed.map.datum >= 0 ? '<th>Datum</th>' : '<th>Menge</th>'}</tr>${m.slice(0, 8).map((x) => `<tr><td>${esc(x.nummer)}</td><td>${esc(x.kunde)}</td><td>${parsed.map.datum >= 0 ? (x.datum ? fmtDate(x.datum) : '') : x.qty}</td></tr>`).join('')}</table>`;
 }
-$('#mapReplace').onclick = async () => {
-  if (items.length && !(await confirmDlg('Aktuelle Liste (' + items.length + ' Positionen) ersetzen?'))) return;
-  items = mappedItems(); finishImport();
+
+// ---------- Hochladen ----------
+function updUploadBtn() { const o = $('#ownerIn').value.trim(); $('#mapUpload').textContent = o ? (lists[o] ? `Liste „${o}“ aktualisieren` : `Als Liste „${o}“ hochladen`) : 'Hochladen'; }
+$('#ownerIn').oninput = updUploadBtn;
+$('#mapUpload').onclick = async () => {
+  const owner = $('#ownerIn').value.trim().replace(/[\/\\]/g, ' ');
+  const msg = $('#upMsg');
+  if (!owner) { msg.innerHTML = '<span class="err-msg">Bitte eintragen, wessen Liste das ist (z. B. Abdul).</span>'; return; }
+  const its = mappedItems().map((x) => ({ nummer: x.nummer, bez: x.bez, kunde: x.kunde, qty: x.qty, datum: x.datum }));
+  if (!its.length) { msg.innerHTML = '<span class="err-msg">Keine Positionen zum Hochladen.</span>'; return; }
+  const btn = $('#mapUpload'); btn.disabled = true; msg.textContent = 'Wird verschlüsselt und hochgeladen…';
+  try {
+    await ensureConn();
+    const data = { owner, items: its, at: nowIso(), by: cfg.name };
+    const res = await Sync.writeFile(conn, 'lists/' + encodeURIComponent(owner) + '.enc', data, lists[owner] && lists[owner].sha, (r, l) => l, 'Liste ' + owner + ' von ' + cfg.name);
+    lists[owner] = { items: its, at: data.at, by: data.by, sha: res.sha };
+    persist(); rebuildItems(); activeDate = latestDate(); rebuild(); renderAll();
+    $('#mapCard').hidden = true; $('#pasteIn').value = ''; parsed = null; msg.textContent = '';
+    show('kunden');
+  } catch (e) { msg.innerHTML = '<span class="err-msg">Hochladen fehlgeschlagen: ' + esc(e.message) + '</span>'; }
+  finally { btn.disabled = false; }
 };
-$('#mapAdd').onclick = () => { items = items.concat(mappedItems()); finishImport(); };
-function finishImport() { save(); $('#mapCard').hidden = true; $('#pasteIn').value = ''; parsed = null; show('kunden'); }
 
-$('#clearList').onclick = async () => { if (await confirmDlg('Ganze Liste löschen?')) { items = []; save(); } };
-$('#resetDone').onclick = async () => { if (await confirmDlg('Alle Haken zurücksetzen?')) { items.forEach((i) => i.done = 0); save(); } };
+// ---------- Einrichtung ----------
+$('#tJoin').onclick = () => { $('#joinCard').hidden = false; $('#newCard').hidden = true; $('#tJoin').classList.remove('ghost'); $('#tNew').classList.add('ghost'); };
+$('#tNew').onclick = () => { $('#joinCard').hidden = true; $('#newCard').hidden = false; $('#tNew').classList.remove('ghost'); $('#tJoin').classList.add('ghost'); };
+async function finishSetup(newCfg) {
+  cfg = newCfg; store.set('cfg', cfg);
+  lists = {}; checks = {}; retouren = {}; kunden = {}; memory = { parts: {}, ean: {}, ocr: {}, prefix: {} }; sha = { checks: null, memory: null, retouren: null, kunden: null }; dirty = { checks: 0, memory: 0, retouren: 0, kunden: 0 }; persist();
+  refresh(); show('kunden'); await sync(); activeDate = latestDate(); rebuild(); renderAll();
+}
+$('#jGo').onclick = async () => {
+  const code = $('#jCode').value.trim(), pw = $('#jPw').value, name = $('#jName').value.trim(); const m = $('#jMsg');
+  if (!code || !pw || !name) { m.innerHTML = '<span class="err-msg">Bitte alle drei Felder ausfüllen.</span>'; return; }
+  $('#jGo').disabled = true; m.textContent = 'Prüfe…';
+  try { const c = await Sync.readInvite(code, pw); conn = await Sync.connect(c, pw); await finishSetup({ invite: code.replace(/\s/g, ''), password: pw, name }); m.textContent = ''; }
+  catch (e) { conn = null; m.innerHTML = '<span class="err-msg">' + esc(e.message) + '</span>'; }
+  finally { $('#jGo').disabled = false; }
+};
+$('#nGo').onclick = async () => {
+  const repo = $('#nRepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/+$/, ''), tok = $('#nTok').value.trim(), pw = $('#nPw').value, pw2 = $('#nPw2').value, name = $('#nName').value.trim(); const m = $('#nMsg');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { m.innerHTML = '<span class="err-msg">Repository bitte als Name/Repository angeben.</span>'; return; }
+  if (!tok || !name) { m.innerHTML = '<span class="err-msg">Token und Name fehlen.</span>'; return; }
+  if (pw.length < 8) { m.innerHTML = '<span class="err-msg">Passwort bitte mindestens 8 Zeichen.</span>'; return; }
+  if (pw !== pw2) { m.innerHTML = '<span class="err-msg">Die Passwörter sind nicht gleich.</span>'; return; }
+  $('#nGo').disabled = true; m.textContent = 'Richte ein…';
+  try {
+    conn = await Sync.connect({ repo, token: tok }, pw, { create: true });
+    const invite = await Sync.makeInvite(pw, { repo, token: tok });
+    await finishSetup({ invite, password: pw, name });
+    show('liste'); $('#inviteBox').hidden = false; $('#inviteCode').textContent = invite; m.textContent = '';
+  } catch (e) { conn = null; m.innerHTML = '<span class="err-msg">' + esc(e.message) + '</span>'; }
+  finally { $('#nGo').disabled = false; }
+};
+$('#syncBtn').onclick = () => { conn = null; sync(); };
+$('#inviteBtn').onclick = () => { $('#inviteBox').hidden = !$('#inviteBox').hidden; $('#inviteCode').textContent = cfg ? cfg.invite : ''; };
+$('#copyInvite').onclick = async () => {
+  try { await navigator.clipboard.writeText(cfg.invite); $('#copyInvite').textContent = 'Kopiert ✓'; }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($('#inviteCode')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('#copyInvite').textContent = 'Markiert – jetzt kopieren'; }
+  setTimeout(() => $('#copyInvite').textContent = 'Kopieren', 2500);
+};
+// Zugang erneuern: neuer Token (Admin) oder neuer Einladungscode (alle anderen) – Daten bleiben
+$('#renewBtn').onclick = () => { $('#renewBox').hidden = !$('#renewBox').hidden; };
+$('#syncDot').onclick = () => { if (cfg) { show('liste'); if (syncErr) $('#renewBox').hidden = false; } };
+$('#renewGo').onclick = async () => {
+  const v = $('#renewIn').value.trim().replace(/\s/g, ''); const m = $('#renewMsg'); if (!v) return;
+  $('#renewGo').disabled = true; m.textContent = 'Prüfe…';
+  try {
+    let invite;
+    if (/^TS1\./.test(v)) { const c = await Sync.readInvite(v, cfg.password); conn = await Sync.connect(c, cfg.password); invite = v; }
+    else {
+      let repo = store.get('repo', null);
+      try { repo = (await Sync.readInvite(cfg.invite, cfg.password)).repo; } catch (e) {}
+      if (!repo) throw new Error('Repository unbekannt – bitte über „Neu einrichten“ gehen');
+      conn = await Sync.connect({ repo, token: v }, cfg.password);
+      invite = await Sync.makeInvite(cfg.password, { repo, token: v });
+      $('#inviteBox').hidden = false; $('#inviteCode').textContent = invite;
+    }
+    cfg.invite = invite; store.set('cfg', cfg); syncErr = ''; $('#renewIn').value = '';
+    m.innerHTML = '<span class="ok-msg">Gespeichert ✓' + (/^TS1\./.test(v) ? '' : ' – den neuen Einladungscode unten an die anderen schicken.') + '</span>';
+    await sync();
+  } catch (e) { m.innerHTML = '<span class="err-msg">' + esc(e.message) + '</span>'; }
+  finally { $('#renewGo').disabled = false; }
+};
+$('#logoutBtn').onclick = async () => {
+  if (!(await confirmDlg('Dieses Handy abmelden? Die Listen bleiben für alle anderen erhalten.'))) return;
+  ['cfg', 'lists', 'checks', 'memory', 'retouren', 'kunden', 'sha', 'dirty', 'lastSync'].forEach((k) => store.del(k));
+  location.reload();
+};
 
-const DEMO = `Datum;Nummer;Bezeichnung;Kunde
-28/10/2026;673310-LS;2x Federblatt;AFG
-29/10/2026;LS4017011;2x Feder;Andi
-30/10/2026;FE18144;2x Bremsschlauch;Kecici H.
-30/10/2026;116 050 0168;Lenker;Hayrullah
-30/10/2026;TC2973;Lenker;Hayrullah
-30/10/2026;RH04-0081;Lenker;Hayrullah
-30/10/2026;RH04-0080;Lenker;Hayrullah
-30/10/2026;FE37478;Ölfilter;Hayrullah
-30/10/2026;CH U. SN 5W30 4L PL;2x 4L Motoröl;Hayrullah
-30/10/2026;MD31720;Türschloss;Hayrullah
-30/10/2026;MD72209;Ölstandsensor;Hayrullah
-30/10/2026;F 009 D03 014;Unterdruckpumpe;Hayrullah
-30/10/2026;GSK1264;Bremsbackensatz;Sedat
-30/10/2026;VAL715556;Innenraumfilter;Sedat
-30/10/2026;E4980LC;Innenraumfilter;Kolgeci
-30/10/2026;B1B034PR;Ölfilter;Kolgeci
-30/10/2026;FE177167;Kraftstofffilter;Kolgeci
-30/10/2026;EL876661;Dichtung;Hazar
-30/10/2026;EL542000;Dichtung;Hazar
-30/10/2026;OSR66340 XENARC;2x Glühlampe;Hazar
-30/10/2026;FE171750;Getriebeölwechselsatz;Hazar
-30/10/2026;PUR-PO0000;Ölfilter;Arif
-29/10/2026;FE26100;Filter;Tsiauo
-30/10/2026;LP3579;Bremsbelagsatz;Apay
-30/10/2026;LP2763;Bremsbelagsatz;Apay
-30/10/2026;C2B016ABE;Bremsbelagsatz;Apay
-30/10/2026;PSR10260;Lichtmaschine;Apay`;
-
-renderAll();
-if (!items.length) show('liste');
-
-// Offline-Betrieb / installierbar
+// ---------- Start ----------
+rebuildItems(); activeDate = latestDate(); rebuild(); renderAll();
+if (!cfg) show('setup'); else { show(items.length ? 'scan' : 'liste'); sync().then(() => { const d = latestDate(); if (d > activeDate) setDay(d); }); }
 if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {} }
 </script>
 </body>

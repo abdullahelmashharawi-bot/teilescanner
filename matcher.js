@@ -49,9 +49,10 @@
   }
 
   // Index aus der Liste bauen: fuzzy-Variante -> Einträge
-  function buildIndex(items) {
+  function buildIndex(items, keep) {
     const idx = [];
     items.forEach((it, i) => {
+      if (keep && !keep(it, i)) return;
       for (const v of variants(it.nummer)) idx.push({ v: fuzzy(v), len: v.length, i });
     });
     return idx;
@@ -77,11 +78,13 @@
   function match(text, index) {
     const cands = candidates(text).map((c) => ({ raw: c, f: fuzzy(c) }));
     const best = new Map();
+    let cur = '';
     const put = (i, score, exact) => {
       const o = best.get(i);
-      if (!o || o.score < score) best.set(i, { i, score, exact });
+      if (!o || o.score < score) best.set(i, { i, score, exact, cand: cur });
     };
     for (const c of cands) {
+      cur = c.raw;
       for (const e of index) {
         if (c.f === e.v) { put(e.i, 100 + e.len * 2, true); continue; }
         // Nummer steckt in einem längeren Wort, z. B. "NO.26100" -> "NO26100"
@@ -98,16 +101,18 @@
   }
 
   // Barcode (EAN) -> Eintrag. Febi: 4027816 + Artikelnummer + Prüfziffer
-  function matchBarcode(code, items, learned) {
+  function matchBarcode(code, items, learned, keep) {
     const hits = [];
+    const ok = (i) => !keep || keep(items[i], i);
     const c = norm(code);
     if (learned && learned[c]) {
       const k = learned[c];
-      items.forEach((it, i) => { if (norm(it.nummer) === k) hits.push({ i, score: 200, exact: true }); });
+      items.forEach((it, i) => { if (ok(i) && norm(it.nummer) === k) hits.push({ i, score: 200, exact: true }); });
       if (hits.length) return hits;
     }
     if (/^[0-9]{13}$/.test(c)) {
       items.forEach((it, i) => {
+        if (!ok(i)) return;
         for (const v of variants(it.nummer)) {
           if (/^[0-9]{5,6}$/.test(v) && c.slice(12 - v.length, 12) === v && c.startsWith('4027816')) hits.push({ i, score: 150, exact: true });
         }
