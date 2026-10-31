@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Teile-Scanner">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Teile-Scanner</title>
+<style>
+  :root {
+    --bg: #111418; --panel: #1b1f25; --panel2: #242a32; --line: #313843;
+    --text: #f2f4f7; --muted: #9aa4b2; --accent: #ff7a1a; --ok: #2fbf71; --warn: #f2c94c; --bad: #ef5350;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  #progress { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  main { flex: 1; overflow-y: auto; }
+  section { display: none; padding: 14px 14px 24px; }
+  section.active { display: block; }
+  nav { display: flex; border-top: 1px solid var(--line); background: var(--panel); padding-bottom: env(safe-area-inset-bottom); }
+  nav button { flex: 1; background: none; border: 0; color: var(--muted); padding: 10px 0 12px; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  nav button .ic { font-size: 22px; line-height: 1; }
+  nav button.active { color: var(--accent); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; padding: 14px 16px;
+    font-size: 16px; font-weight: 600; background: var(--panel2); color: var(--text); cursor: pointer; text-align: center; }
+  .btn.primary { background: var(--accent); color: #1a0d00; }
+  .btn.ok { background: var(--ok); color: #04210f; }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); }
+  .btn.small { padding: 9px 12px; font-size: 14px; border-radius: 10px; }
+  .btn:disabled { opacity: .5; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .muted { color: var(--muted); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  input[type=text], textarea, select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; font-size: 16px; font-family: inherit; }
+  textarea { min-height: 110px; resize: vertical; }
+  label.f { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+
+  /* Kamera */
+  .cam { position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 52vh; background: #000; border-radius: 16px; overflow: hidden; }
+  .cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .frame { position: absolute; left: 7%; right: 7%; top: 33%; height: 34%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px;
+    box-shadow: 0 0 0 999px rgba(0,0,0,.35); transition: border-color .2s; }
+  .frame.busy { border-color: var(--accent); }
+  .cam .hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-size: 14px; color: #fff; text-shadow: 0 1px 3px #000; }
+  .cam .off { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; text-align: center; }
+  #status { min-height: 22px; font-size: 14px; color: var(--muted); margin: 10px 2px; }
+
+  /* Treffer */
+  #result { border-radius: 16px; padding: 18px 16px; margin: 12px 0; background: var(--panel); border: 2px solid var(--ok); }
+  #result.done { border-color: var(--warn); }
+  #result .lbl { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  #result .kunde { font-size: 44px; font-weight: 800; line-height: 1.05; margin: 2px 0 10px; word-break: break-word; }
+  #result .meta { font-size: 17px; margin-bottom: 4px; }
+  #result .meta b { font-variant-numeric: tabular-nums; }
+  #result .flag { display: inline-block; font-size: 13px; padding: 3px 8px; border-radius: 6px; background: var(--warn); color: #222; margin: 6px 0; font-weight: 700; }
+  #result .alts { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+  #result .actions { margin-top: 14px; }
+
+  /* Kunden */
+  .kgroup { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; overflow: hidden; }
+  .khead { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; font-weight: 700; font-size: 18px; }
+  .khead .cnt { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .khead.full .cnt { color: var(--ok); }
+  .bar { height: 4px; background: var(--panel2); }
+  .bar i { display: block; height: 100%; background: var(--ok); }
+  .item { display: flex; gap: 12px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  .item .chk { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line); flex: none; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #04210f; }
+  .item.done .chk { background: var(--ok); border-color: var(--ok); }
+  .item.part .chk { border-color: var(--warn); color: var(--warn); font-size: 12px; }
+  .item .nr { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .item .bz { font-size: 14px; color: var(--muted); }
+  .item.done .nr { text-decoration: line-through; color: var(--muted); }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+  .toolbar input { flex: 1; }
+
+  table.prev { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  table.prev td, table.prev th { border-bottom: 1px solid var(--line); padding: 5px 4px; text-align: left; }
+  table.prev th { color: var(--muted); font-weight: 600; }
+
+  .dlg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  .dlg .box { background: var(--panel); width: 100%; max-width: 520px; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .flash { animation: flash .5s; }
+  @keyframes flash { from { background: rgba(47,191,113,.35); } to { background: var(--panel); } }
+  [hidden] { display: none !important; }
+  .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; left: -9999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Teile<span>-</span>Scanner</h1>
+  <div id="progress"></div>
+</header>
+
+<main>
+  <!-- SCANNEN -->
+  <section id="v-scan" class="active">
+    <div class="cam" id="cam">
+      <video id="video" playsinline muted hidden></video>
+      <div class="frame" id="frame" hidden></div>
+      <div class="hint" id="camHint" hidden>Nummer in den Rahmen halten</div>
+      <div class="off" id="camOff">
+        <div style="font-size:44px">📦</div>
+        <div class="muted" id="camOffText">Kamera auf die Artikelnummer halten – die App sagt dir, für welchen Kunden das Teil ist.</div>
+        <button class="btn primary" id="startCam">Kamera starten</button>
+      </div>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="result" hidden></div>
+
+    <div class="row" style="margin-top:6px">
+      <button class="btn primary" id="photoBtn">📷 Foto machen</button>
+      <button class="btn" id="galleryBtn">🖼️ Aus Galerie</button>
+    </div>
+    <input type="file" id="photo" class="vh" accept="image/*" capture="environment">
+    <input type="file" id="gallery" class="vh" accept="image/*">
+    <div class="row" style="margin-top:10px"><button class="btn" id="stopCam" hidden>Kamera aus</button></div>
+    <form id="manual" class="row" style="margin-top:10px">
+      <input type="text" id="manualIn" placeholder="Nummer eintippen, z. B. 26100" autocomplete="off" autocapitalize="characters" style="flex:2">
+      <button class="btn" type="submit" style="flex:none">Suchen</button>
+    </form>
+  </section>
+
+  <!-- KUNDEN -->
+  <section id="v-kunden">
+    <div class="toolbar">
+      <input type="text" id="filter" placeholder="Kunde oder Nummer suchen">
+      <button class="btn small ghost" id="toggleOpen">Nur offene</button>
+    </div>
+    <div id="kundenList"></div>
+  </section>
+
+  <!-- LISTE -->
+  <section id="v-liste">
+    <div class="card">
+      <h2>Liste laden</h2>
+      <div class="muted" style="font-size:14px;margin-bottom:10px">Excel-Datei (.xlsx) oder CSV wählen – oder in Excel die Zeilen markieren, kopieren und unten einfügen.</div>
+      <button class="btn primary" style="width:100%" id="fileBtn">Excel / CSV auswählen</button>
+      <input type="file" id="fileIn" class="vh" accept=".xlsx,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      <label class="f" for="pasteIn">…oder hier einfügen</label>
+      <textarea id="pasteIn" placeholder="30/10/2026	FE26100	Filter	Tsiauo"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="pasteBtn">Eingefügtes übernehmen</button>
+      </div>
+      <div id="listMsg" style="color:var(--bad);margin-top:8px"></div>
+    </div>
+
+    <div class="card" id="mapCard" hidden>
+      <h2>Spalten prüfen</h2>
+      <div class="muted" style="font-size:14px">Ich habe die Spalten automatisch erkannt. Wenn etwas nicht stimmt, hier umstellen.</div>
+      <label class="f">Artikelnummer</label><select id="mapNr"></select>
+      <label class="f">Kunde</label><select id="mapKunde"></select>
+      <label class="f">Bezeichnung (optional)</label><select id="mapBez"></select>
+      <div id="mapPrev"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="mapReplace">Liste ersetzen</button>
+        <button class="btn" id="mapAdd">Hinzufügen</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Aktuelle Liste</h2>
+      <div id="listInfo" class="muted"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn small" id="resetDone">Haken zurücksetzen</button>
+        <button class="btn small" id="clearList">Liste löschen</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn small ghost" id="demoBtn">Beispielliste laden</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-v="scan" class="active"><span class="ic">⌖</span>Scannen</button>
+  <button data-v="kunden"><span class="ic">☰</span>Kunden</button>
+  <button data-v="liste"><span class="ic">⇪</span>Liste</button>
+</nav>
+
+<div class="dlg" id="dlg" hidden><div class="box"><div id="dlgText" style="font-size:17px;margin-bottom:16px"></div>
+  <div class="row"><button class="btn" id="dlgNo">Abbrechen</button><button class="btn primary" id="dlgYes">OK</button></div></div></div>
+
+<canvas id="cv" hidden></canvas>
+
+<script src="matcher.js"></script>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// ---------- Speicher ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('ts_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('ts_' + k, JSON.stringify(v)); } catch (e) {} },
+};
+let items = store.get('items', []);      // {nummer, bez, kunde, qty, done}
+let learned = store.get('learned', {});  // Barcode -> Nummer (normalisiert)
+let index = Matcher.buildIndex(items);
+function save() { store.set('items', items); index = Matcher.buildIndex(items); renderAll(); }
+
+// ---------- Navigation ----------
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.v));
+function show(v) {
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
+  document.querySelectorAll('section').forEach((s) => s.classList.toggle('active', s.id === 'v-' + v));
+  if (v !== 'scan') pauseLoop(); else resumeLoop();
+}
+
+function confirmDlg(text) {
+  return new Promise((res) => {
+    $('#dlgText').textContent = text; $('#dlg').hidden = false;
+    $('#dlgYes').onclick = () => { $('#dlg').hidden = true; res(true); };
+    $('#dlgNo').onclick = () => { $('#dlg').hidden = true; res(false); };
+  });
+}
+
+// ---------- Texterkennung (Worker) ----------
+let worker = null, reqId = 0; const pending = new Map();
+function getWorker() {
+  if (worker) return worker;
+  worker = new Worker('ocr-worker.js');
+  worker.onmessage = (e) => { const p = pending.get(e.data.id); if (p) { pending.delete(e.data.id); e.data.error ? p.rej(new Error(e.data.error)) : p.res(e.data); } };
+  worker.onerror = (e) => { for (const p of pending.values()) p.rej(new Error(e.message || 'Worker-Fehler')); pending.clear(); worker = null; };
+  return worker;
+}
+function ocr(bytes, psm) {
+  return new Promise((res, rej) => {
+    const id = ++reqId; pending.set(id, { res, rej });
+    getWorker().postMessage({ id, bytes, psm }, bytes ? [bytes] : []);
+  });
+}
+function warmup() { ocr(null).catch((e) => setStatus('Texterkennung konnte nicht starten: ' + e.message)); }
+
+// Bildausschnitt -> Graustufen-JPEG
+function grab(src, sx, sy, sw, sh, maxW) {
+  const cv = $('#cv'); const scale = Math.min(1, maxW / sw);
+  cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.filter = 'grayscale(1) contrast(1.25)';
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  ctx.filter = 'none';
+  return new Promise((res) => cv.toBlob((b) => b.arrayBuffer().then(res), 'image/jpeg', 0.92));
+}
+
+let barcodeDetector = null;
+try { if ('BarcodeDetector' in window) barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a'] }); } catch (e) {}
+async function readBarcodes(src) {
+  if (!barcodeDetector) return [];
+  try { return (await barcodeDetector.detect(src)).map((b) => b.rawValue); } catch (e) { return []; }
+}
+
+// ---------- Kamera ----------
+const video = $('#video');
+let stream = null, looping = false, paused = false, lastHit = null, scanStart = 0;
+let audioCtx = null;
+
+$('#startCam').onclick = startCam;
+$('#stopCam').onclick = stopCam;
+
+async function startCam() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  if (!items.length) { setStatus('Noch keine Liste geladen – unter „Liste“ eine Excel-Datei laden.'); }
+  warmup();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) {
+    $('#camOffText').textContent = 'Die Live-Kamera ist hier nicht verfügbar. Nutze „Foto machen“ – das funktioniert genauso.';
+    $('#startCam').hidden = true;
+    return;
+  }
+  video.srcObject = stream; video.hidden = false; await video.play().catch(() => {});
+  // Autofokus/Taschenlampe, wo möglich
+  try { const t = stream.getVideoTracks()[0]; const c = t.getCapabilities ? t.getCapabilities() : {}; if (c.focusMode && c.focusMode.includes('continuous')) await t.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+  $('#camOff').hidden = true; $('#frame').hidden = false; $('#camHint').hidden = false; $('#stopCam').hidden = false;
+  paused = false; scanStart = Date.now(); loop();
+}
+function stopCam() {
+  looping = false;
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null; video.srcObject = null; video.hidden = true;
+  $('#camOff').hidden = false; $('#frame').hidden = true; $('#camHint').hidden = true; $('#stopCam').hidden = true; $('#startCam').hidden = false;
+}
+function pauseLoop() { paused = true; }
+function resumeLoop() { if (stream && $('#result').hidden) { paused = false; scanStart = Date.now(); loop(); } }
+
+// Rahmen-Position in Video-Pixel umrechnen (object-fit: cover)
+function frameRect() {
+  const vw = video.videoWidth, vh = video.videoHeight; const el = $('#cam').getBoundingClientRect(); const fr = $('#frame').getBoundingClientRect();
+  const s = Math.max(el.width / vw, el.height / vh); const ox = (el.width - vw * s) / 2, oy = (el.height - vh * s) / 2;
+  const pad = 0.06; // etwas großzügiger als der Rahmen
+  let x = (fr.left - el.left - ox) / s, y = (fr.top - el.top - oy) / s, w = fr.width / s, h = fr.height / s;
+  x -= w * pad; y -= h * pad; w *= 1 + 2 * pad; h *= 1 + 2 * pad;
+  x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+  return [x, y, w, h];
+}
+
+async function loop() {
+  if (looping) return; looping = true;
+  while (stream && !paused) {
+    if (!video.videoWidth) { await new Promise((r) => setTimeout(r, 200)); continue; }
+    $('#frame').classList.add('busy');
+    try {
+      const codes = await readBarcodes(video);
+      let hits = [];
+      for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, learned));
+      let text = '';
+      if (!hits.length) {
+        const [x, y, w, h] = frameRect();
+        const r = await ocr(await grab(video, x, y, w, h, 1100));
+        text = r.text || '';
+        hits = Matcher.match(text, index);
+      }
+      if (paused || !stream) break;
+      if (hits.length) {
+        const top = hits[0];
+        // sicherer Treffer sofort, unsicherer erst wenn zweimal hintereinander gleich
+        if (top.exact || top.score >= 100 || (lastHit === top.i)) { showResult(hits, codes[0]); break; }
+        lastHit = top.i; setStatus('Fast… bitte ruhig halten');
+      } else {
+        lastHit = null;
+        if (Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran, gerade halten, gutes Licht. Oder „Foto machen“.');
+      }
+    } catch (e) {
+      setStatus('Fehler bei der Erkennung: ' + e.message); await new Promise((r) => setTimeout(r, 1500));
+    }
+    $('#frame').classList.remove('busy');
+  }
+  $('#frame').classList.remove('busy');
+  looping = false;
+}
+
+// ---------- Foto ----------
+$('#photoBtn').onclick = () => $('#photo').click();
+$('#galleryBtn').onclick = () => $('#gallery').click();
+$('#fileBtn').onclick = () => $('#fileIn').click();
+$('#gallery').onchange = (e) => $('#photo').onchange(e);
+$('#photo').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  pauseLoop(); hideResult(); setStatus('Foto wird gelesen…');
+  try {
+    const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => {
+      const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im;
+    });
+    const codes = await readBarcodes(img);
+    let hits = []; for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, learned));
+    if (!hits.length) {
+      const w = img.width, h = img.height;
+      hits = Matcher.match((await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text, index);
+      if (!hits.length) hits = Matcher.match((await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text, index);
+    }
+    if (hits.length) showResult(hits, codes[0]);
+    else setStatus('Keine Nummer aus der Liste gefunden. Tipp: näher an das Etikett, Nummer gut lesbar – oder eintippen.');
+  } catch (err) { setStatus('Foto konnte nicht gelesen werden: ' + err.message); }
+};
+
+// ---------- Eintippen ----------
+$('#manual').onsubmit = (e) => {
+  e.preventDefault();
+  const q = $('#manualIn').value.trim(); if (!q) return;
+  let hits = Matcher.match(q, index);
+  const nq = Matcher.norm(q);
+  if (nq.length >= 3) items.forEach((it, i) => { if (Matcher.norm(it.nummer).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 50 }); });
+  if (hits.length) { pauseLoop(); showResult(hits); $('#manualIn').blur(); }
+  else setStatus('„' + q + '“ steht nicht in der Liste.');
+};
+
+// ---------- Treffer anzeigen ----------
+let current = null;
+function showResult(hits, barcode) {
+  // gleich gute Treffer: noch offene zuerst
+  const best = hits[0].score;
+  const sorted = hits.slice().sort((a, b) => (b.score >= best - 5) - (a.score >= best - 5) || (isDone(a.i) - isDone(b.i)) || b.score - a.score);
+  const uniq = []; for (const h of sorted) if (!uniq.some((u) => u.i === h.i)) uniq.push(h);
+  current = { hits: uniq, sel: uniq[0].i, barcode };
+  renderResult(); feedback(); setStatus('');
+}
+function isDone(i) { return (items[i].done || 0) >= (items[i].qty || 1); }
+function renderResult() {
+  const it = items[current.sel]; const r = $('#result'); const done = isDone(current.sel);
+  const alts = current.hits.filter((h) => h.i !== current.sel).slice(0, 4);
+  r.className = done ? 'done' : '';
+  r.innerHTML = `
+    <div class="lbl">Kunde</div>
+    <div class="kunde">${esc(it.kunde || '—')}</div>
+    <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
+    <div class="meta muted">Menge: ${it.done || 0} von ${it.qty || 1} erledigt</div>
+    ${done ? '<div class="flag">Schon komplett abgehakt</div>' : ''}
+    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px">Oder meintest du:</div><div class="alts">${alts.map((a) => `<button class="btn small" data-alt="${a.i}">${esc(items[a.i].kunde)} · ${esc(items[a.i].nummer)}</button>`).join('')}</div>` : ''}
+    <div class="row actions">
+      <button class="btn ok" id="rDone">✓ Abhaken</button>
+      <button class="btn" id="rNext">Weiter</button>
+    </div>`;
+  r.hidden = false;
+  r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = +b.dataset.alt; renderResult(); });
+  $('#rDone').onclick = () => {
+    const x = items[current.sel]; x.done = Math.min((x.done || 0) + 1, x.qty || 1);
+    if (current.barcode) { learned[Matcher.norm(current.barcode)] = Matcher.norm(x.nummer); store.set('learned', learned); }
+    save(); nextScan();
+  };
+  $('#rNext').onclick = nextScan;
+  r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function hideResult() { $('#result').hidden = true; current = null; }
+function nextScan() { hideResult(); lastHit = null; $('#manualIn').value = ''; resumeLoop(); }
+function feedback() {
+  try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
+  try {
+    if (!audioCtx) return; const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 1320; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {}
+}
+function setStatus(t) { $('#status').textContent = t; }
+
+// ---------- Kunden-Übersicht ----------
+let onlyOpen = false;
+$('#toggleOpen').onclick = () => { onlyOpen = !onlyOpen; $('#toggleOpen').textContent = onlyOpen ? 'Alle zeigen' : 'Nur offene'; renderKunden(); };
+$('#filter').oninput = renderKunden;
+function renderKunden() {
+  const q = $('#filter').value.trim().toLowerCase(); const nq = Matcher.norm(q);
+  const groups = new Map();
+  items.forEach((it, i) => {
+    if (q && !(it.kunde || '').toLowerCase().includes(q) && !(nq && Matcher.norm(it.nummer).includes(nq))) return;
+    const k = it.kunde || '(ohne Kunde)'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i);
+  });
+  const arr = [...groups.entries()].map(([k, ix]) => ({ k, ix, done: ix.filter(isDone).length }))
+    .filter((g) => !onlyOpen || g.done < g.ix.length)
+    .sort((a, b) => (a.done === a.ix.length) - (b.done === b.ix.length) || a.k.localeCompare(b.k, 'de'));
+  $('#kundenList').innerHTML = arr.length ? arr.map((g) => `
+    <div class="kgroup">
+      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span>${esc(g.k)}</span><span class="cnt">${g.done} / ${g.ix.length}${g.done === g.ix.length ? ' ✓' : ''}</span></div>
+      <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i></div>
+      ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const part = !d && (it.done || 0) > 0;
+        return `<div class="item ${d ? 'done' : ''} ${part ? 'part' : ''}" data-i="${i}"><div class="chk">${d ? '✓' : part ? (it.done + '/' + it.qty) : ''}</div>
+          <div><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}</div></div>`; }).join('')}
+    </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${items.length ? 'Nichts gefunden.' : 'Noch keine Liste geladen.'}</div>`;
+  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = () => {
+    const it = items[+el.dataset.i]; const q = it.qty || 1;
+    it.done = (it.done || 0) >= q ? 0 : (it.done || 0) + 1; save();
+  });
+}
+
+function renderAll() {
+  const total = items.length, done = items.filter((_, i) => isDone(i)).length;
+  $('#progress').textContent = total ? `${done} / ${total} erledigt` : '';
+  const kunden = new Set(items.map((i) => i.kunde)).size;
+  $('#listInfo').textContent = total ? `${total} Positionen · ${kunden} Kunden · ${done} abgehakt` : 'Noch keine Liste geladen.';
+  renderKunden();
+}
+
+// ---------- Liste importieren ----------
+let parsed = null; // {rows, map}
+
+$('#fileIn').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    const rows = /\.xlsx$/i.test(f.name) || isZip(buf) ? await readXlsx(buf) : parseText(new TextDecoder(guessEnc(buf)).decode(buf));
+    startMapping(rows);
+  } catch (err) { alertCard('Datei konnte nicht gelesen werden: ' + err.message); }
+};
+$('#pasteBtn').onclick = () => { const t = $('#pasteIn').value; if (t.trim()) startMapping(parseText(t)); };
+$('#demoBtn').onclick = () => startMapping(parseText(DEMO));
+
+function alertCard(t) { $('#listMsg').textContent = t; }
+function isZip(buf) { const u = new Uint8Array(buf, 0, 4); return u[0] === 0x50 && u[1] === 0x4b; }
+function guessEnc(buf) { try { new TextDecoder('utf-8', { fatal: true }).decode(buf); return 'utf-8'; } catch (e) { return 'windows-1252'; } }
+
+function parseText(t) {
+  const lines = t.replace(/\r/g, '').split('\n');
+  const sample = lines.slice(0, 20).join('\n');
+  const cnt = (c) => (sample.match(new RegExp(c === '\t' ? '\t' : '\\' + c, 'g')) || []).length;
+  const delim = ['\t', ';', ','].sort((a, b) => cnt(b) - cnt(a))[0];
+  return lines.map((l) => {
+    const out = []; let cur = '', q = false;
+    for (let i = 0; i < l.length; i++) {
+      const ch = l[i];
+      if (q) { if (ch === '"') { if (l[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true; else if (ch === delim) { out.push(cur.trim()); cur = ''; } else cur += ch;
+    }
+    out.push(cur.trim()); return out;
+  });
+}
+
+// Minimaler .xlsx-Leser (ohne externe Bibliothek)
+async function readXlsx(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1; for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('keine gültige Excel-Datei');
+  const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true); const files = {};
+  for (let k = 0; k < n; k++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lo = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+    files[name] = { method, csize, lo }; p += 46 + nl + el + cl;
+  }
+  async function get(name) {
+    const f = files[name]; if (!f) return null;
+    const start = f.lo + 30 + dv.getUint16(f.lo + 26, true) + dv.getUint16(f.lo + 28, true);
+    const data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(ds).text();
+  }
+  const xml = (s) => new DOMParser().parseFromString(s, 'application/xml');
+  let sheetPath = 'xl/worksheets/sheet1.xml';
+  try {
+    const wb = xml(await get('xl/workbook.xml')); const rels = xml(await get('xl/_rels/workbook.xml.rels'));
+    const first = wb.getElementsByTagName('sheet')[0]; const rid = first.getAttribute('r:id') || first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    for (const r of rels.getElementsByTagName('Relationship')) if (r.getAttribute('Id') === rid) { const t = r.getAttribute('Target'); sheetPath = t.startsWith('/') ? t.slice(1) : 'xl/' + t; }
+  } catch (e) {}
+  const ssTxt = await get('xl/sharedStrings.xml'); const ss = [];
+  if (ssTxt) for (const si of xml(ssTxt).getElementsByTagName('si')) ss.push([...si.getElementsByTagName('t')].map((t) => t.textContent).join(''));
+  const sheet = xml(await get(sheetPath)); const rows = [];
+  const colIdx = (ref) => { const m = /^([A-Z]+)/.exec(ref || ''); let c = 0; if (m) for (const ch of m[1]) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
+  for (const row of sheet.getElementsByTagName('row')) {
+    const out = []; let auto = 0;
+    for (const c of row.getElementsByTagName('c')) {
+      const ci = c.getAttribute('r') ? colIdx(c.getAttribute('r')) : auto; auto = ci + 1;
+      const t = c.getAttribute('t'); const v = c.getElementsByTagName('v')[0];
+      let val = '';
+      if (t === 's') val = ss[+v?.textContent] ?? ''; else if (t === 'inlineStr') val = [...c.getElementsByTagName('t')].map((x) => x.textContent).join(''); else val = v ? v.textContent : '';
+      while (out.length < ci) out.push(''); out[ci] = String(val).trim();
+    }
+    rows.push(out);
+  }
+  return rows;
+}
+
+const HEAD = { nr: /art(ikel)?\.?\s*-?\s*n(umme)?r|^nr\.?$|^nummer|teile.?n|^no\.?$/i, kunde: /kunde|empf|^name$|auftragg/i, bez: /bezeich|beschreib|artikel$|^teil$|produkt/i };
+function detectColumns(rows) {
+  rows = rows.filter((r) => r.filter((c) => c).length >= 2);
+  let header = null;
+  if (rows.length && rows[0].some((c) => HEAD.nr.test(c) || HEAD.kunde.test(c))) header = rows.shift();
+  const nc = Math.max(0, ...rows.map((r) => r.length));
+  const isDate = (v) => /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(v) || /^\d{4}-\d{2}-\d{2}/.test(v) || (/^\d{5}(\.\d+)?$/.test(v) && +v > 35000 && +v < 60000);
+  const st = [];
+  for (let c = 0; c < nc; c++) {
+    const vals = rows.map((r) => r[c] || '').filter(Boolean); const N = rows.length || 1;
+    st.push({ c, fill: vals.length / N,
+      date: vals.filter(isDate).length / (vals.length || 1),
+      part: vals.filter((v) => /\d/.test(v) && v.length >= 4 && v.length <= 25 && !isDate(v)).length / N,
+      alpha: vals.filter((v) => !/\d/.test(v)).length / (vals.length || 1),
+      uniq: new Set(vals).size / (vals.length || 1) });
+  }
+  const map = { nr: -1, kunde: -1, bez: -1 };
+  if (header) header.forEach((h, c) => { for (const k of ['nr', 'kunde', 'bez']) if (map[k] < 0 && HEAD[k].test(h)) map[k] = c; });
+  const usable = st.filter((s) => s.fill > 0.3 && s.date < 0.5);
+  if (map.nr < 0) { const b = usable.slice().sort((a, b) => b.part - a.part)[0]; if (b) map.nr = b.c; }
+  if (map.kunde < 0) { const k = usable.filter((s) => s.c !== map.nr && s.alpha > 0.6).sort((a, b) => b.c - a.c)[0]; if (k) map.kunde = k.c; }
+  if (map.bez < 0) { const b = usable.filter((s) => s.c !== map.nr && s.c !== map.kunde).sort((a, b) => b.fill - a.fill || b.uniq - a.uniq)[0]; if (b) map.bez = b.c; }
+  return { rows, header, nc, map };
+}
+
+function startMapping(rows) {
+  $('#listMsg').textContent = '';
+  parsed = detectColumns(rows);
+  if (!parsed.rows.length) return alertCard('Keine Zeilen gefunden.');
+  const card = $('#mapCard'); card.hidden = false;
+  const colName = (c) => { const letter = String.fromCharCode(65 + c); const ex = (parsed.rows.find((r) => r[c]) || [])[c] || ''; return `Spalte ${letter}${parsed.header && parsed.header[c] ? ' – ' + parsed.header[c] : ''}${ex ? '  (z. B. ' + ex.slice(0, 24) + ')' : ''}`; };
+  for (const [sel, key, optional] of [['#mapNr', 'nr'], ['#mapKunde', 'kunde'], ['#mapBez', 'bez', true]]) {
+    const s = $(sel);
+    s.innerHTML = (optional ? '<option value="-1">— keine —</option>' : '') + Array.from({ length: parsed.nc }, (_, c) => `<option value="${c}">${esc(colName(c))}</option>`).join('');
+    s.value = String(parsed.map[key]); s.onchange = () => { parsed.map[key] = +s.value; preview(); };
+  }
+  preview(); card.scrollIntoView({ behavior: 'smooth' });
+}
+function mappedItems() {
+  const { nr, kunde, bez } = parsed.map;
+  return parsed.rows.map((r) => {
+    const b = bez >= 0 ? r[bez] || '' : ''; const m = /(?:^|\s)(\d{1,3})\s*[x×]\s/i.exec(' ' + b + ' ');
+    return { nummer: (r[nr] || '').trim(), kunde: (r[kunde] || '').trim(), bez: b.trim(), qty: m ? +m[1] : 1, done: 0 };
+  }).filter((x) => x.nummer && /[0-9A-Za-z]/.test(x.nummer));
+}
+function preview() {
+  const m = mappedItems();
+  $('#mapPrev').innerHTML = `<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen erkannt. Vorschau:</div>
+    <table class="prev"><tr><th>Nummer</th><th>Kunde</th><th>Menge</th></tr>${m.slice(0, 6).map((x) => `<tr><td>${esc(x.nummer)}</td><td>${esc(x.kunde)}</td><td>${x.qty}</td></tr>`).join('')}</table>`;
+}
+$('#mapReplace').onclick = async () => {
+  if (items.length && !(await confirmDlg('Aktuelle Liste (' + items.length + ' Positionen) ersetzen?'))) return;
+  items = mappedItems(); finishImport();
+};
+$('#mapAdd').onclick = () => { items = items.concat(mappedItems()); finishImport(); };
+function finishImport() { save(); $('#mapCard').hidden = true; $('#pasteIn').value = ''; parsed = null; show('kunden'); }
+
+$('#clearList').onclick = async () => { if (await confirmDlg('Ganze Liste löschen?')) { items = []; save(); } };
+$('#resetDone').onclick = async () => { if (await confirmDlg('Alle Haken zurücksetzen?')) { items.forEach((i) => i.done = 0); save(); } };
+
+const DEMO = `Datum;Nummer;Bezeichnung;Kunde
+28/10/2026;673310-LS;2x Federblatt;AFG
+29/10/2026;LS4017011;2x Feder;Andi
+30/10/2026;FE18144;2x Bremsschlauch;Kecici H.
+30/10/2026;116 050 0168;Lenker;Hayrullah
+30/10/2026;TC2973;Lenker;Hayrullah
+30/10/2026;RH04-0081;Lenker;Hayrullah
+30/10/2026;RH04-0080;Lenker;Hayrullah
+30/10/2026;FE37478;Ölfilter;Hayrullah
+30/10/2026;CH U. SN 5W30 4L PL;2x 4L Motoröl;Hayrullah
+30/10/2026;MD31720;Türschloss;Hayrullah
+30/10/2026;MD72209;Ölstandsensor;Hayrullah
+30/10/2026;F 009 D03 014;Unterdruckpumpe;Hayrullah
+30/10/2026;GSK1264;Bremsbackensatz;Sedat
+30/10/2026;VAL715556;Innenraumfilter;Sedat
+30/10/2026;E4980LC;Innenraumfilter;Kolgeci
+30/10/2026;B1B034PR;Ölfilter;Kolgeci
+30/10/2026;FE177167;Kraftstofffilter;Kolgeci
+30/10/2026;EL876661;Dichtung;Hazar
+30/10/2026;EL542000;Dichtung;Hazar
+30/10/2026;OSR66340 XENARC;2x Glühlampe;Hazar
+30/10/2026;FE171750;Getriebeölwechselsatz;Hazar
+30/10/2026;PUR-PO0000;Ölfilter;Arif
+29/10/2026;FE26100;Filter;Tsiauo
+30/10/2026;LP3579;Bremsbelagsatz;Apay
+30/10/2026;LP2763;Bremsbelagsatz;Apay
+30/10/2026;C2B016ABE;Bremsbelagsatz;Apay
+30/10/2026;PSR10260;Lichtmaschine;Apay`;
+
+renderAll();
+if (!items.length) show('liste');
+
+// Offline-Betrieb / installierbar
+if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch (e) {} }
+</script>
+</body>
+</html>
