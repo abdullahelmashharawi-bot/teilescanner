@@ -175,6 +175,22 @@
   .flag.other { background: var(--warn); color: #222; }
   .btn.da { background: var(--warn); color: #2a2100; }
   #result.info { border-color: var(--line); }
+  .frame.wide { top: 40%; height: 20%; left: 4%; right: 4%; border-color: var(--warn); }
+  #modeBar.bc { background: #9a7a10; } #modeBar.look { background: #1f6f8b; }
+  .btn.bcmiss { background: rgba(242,201,76,.15); color: var(--warn); border: 1px solid var(--warn); }
+  .btn.bcok { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .sr { display: flex; gap: 12px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+  .sr:first-child { border-top: 0; }
+  .sr .ph { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: var(--panel2); border: 1px solid var(--line); flex: none; }
+  .sr .st { font-size: 12px; } .st.ok { color: var(--ok); } .st.miss { color: var(--warn); }
+  .bcrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .bcrow .x, .pgi .x { background: none; border: 0; color: var(--muted); font-size: 18px; }
+  .pg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .pgi { position: relative; aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); overflow: hidden; }
+  .pgi img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pgi .x { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff; border-radius: 6px; width: 26px; height: 26px; font-size: 15px; }
+  .pgi .lab { position: absolute; left: 4px; bottom: 4px; font-size: 11px; background: rgba(0,0,0,.55); color: #fff; padding: 1px 5px; border-radius: 5px; }
+  .pgadd { display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--muted); cursor: pointer; }
   .stand { font-size: 12px; color: var(--muted); margin: -4px 2px 10px; }
   .stand .old { color: var(--warn); font-weight: 700; }
   #shareBox { white-space: pre-wrap; font-size: 14px; max-height: 45vh; overflow-y: auto; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
@@ -216,7 +232,7 @@
 
   <!-- SCANNEN -->
   <section id="v-scan">
-    <div id="modeBar" hidden><span>↩ RETOURE-MODUS</span><button class="btn small" id="modeEnd">Beenden</button></div>
+    <div id="modeBar" hidden><span id="modeText">↩ RETOURE-MODUS</span><button class="btn small" id="modeEnd">Beenden</button></div>
     <div id="scanDay"></div>
     <div class="stand" id="stand1"></div>
     <div class="cam" id="cam">
@@ -259,6 +275,18 @@
     </div>
     <div id="kundenList"></div>
     <button class="btn" style="width:100%;margin-top:6px" id="shareOpen">📋 Offene Teile als Nachricht</button>
+  </section>
+
+  <!-- TEILE -->
+  <section id="v-teile">
+    <div id="teileList">
+      <button class="btn primary" style="width:100%;font-size:18px;padding:16px" id="lookBtn">📷 Teil scannen (nur nachschauen)</button>
+      <div class="muted" style="font-size:13px;margin:8px 2px 12px">Scannen ohne Abhaken – zeigt das Teil mit Barcodes und Fotos.</div>
+      <input type="text" id="teileQ" placeholder="Name, Nummer oder Barcode suchen" autocomplete="off" style="margin-bottom:12px">
+      <div class="muted" id="teileCount" style="font-size:13px;margin:0 2px 8px"></div>
+      <div class="card" style="padding:0" id="teileRes"></div>
+    </div>
+    <div id="teilCard" hidden></div>
   </section>
 
   <!-- RETOURE -->
@@ -309,6 +337,11 @@
     </div>
 
     <div class="card">
+      <h2>Gelernt</h2>
+      <div id="learnInfo" class="muted" style="font-size:14px"></div>
+    </div>
+
+    <div class="card">
       <h2>App-Start</h2>
       <div class="muted" style="font-size:14px">Alles, was <b>vor</b> diesem Tag bestellt wurde, gilt automatisch als „ist da“ und „abgegeben“. Für Retouren zählt bei diesen Teilen das Datum aus der Liste als Erhalt-Datum.</div>
       <div class="row" style="margin-top:10px"><input type="date" id="startIn" style="flex:2"><button class="btn small" id="startSave" style="flex:1">Speichern</button></div>
@@ -341,6 +374,7 @@
 <nav>
   <button data-v="scan" class="active"><span class="ic">⌖</span>Scannen</button>
   <button data-v="kunden"><span class="ic">☰</span>Kunden</button>
+  <button data-v="teile"><span class="ic">🔍</span>Teile</button>
   <button data-v="retoure"><span class="ic">↩</span>Retoure</button>
   <button data-v="liste"><span class="ic">⇪</span>Liste</button>
 </nav>
@@ -376,13 +410,16 @@
 
 <canvas id="cv" hidden></canvas>
 <canvas id="cv2" hidden></canvas>
+<canvas id="cv3" hidden></canvas>
 
 <script src="matcher.js"></script>
 <script src="sync.js"></script>
 <script src="brands.js"></script>
+<script src="quagga.min.js"></script>
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
+window.addEventListener('error', (e) => { if (e && e.filename && /quagga/i.test(e.filename)) e.preventDefault(); });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = {
   get(k, d) { try { const v = localStorage.getItem('ts2_' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -436,15 +473,16 @@ function rebuildItems() {
 let indexOther = [], indexAll = [];
 function rebuild() { index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items); }
 function persist() { store.set('kunden', kunden); store.set('retouren', retouren); store.set('lists', lists); store.set('checks', checks); store.set('memory', memory); store.set('sha', sha); store.set('dirty', dirty); }
-function refresh() { rebuildItems(); rebuild(); renderAll(); if (current && current.sel) (current.ret ? renderRetoure() : renderResult()); }
+function refresh() { catCache = null; rebuildItems(); rebuild(); renderAll(); if (partOpen && !$('#teilCard').hidden) openPart(partOpen); else if ($('#v-teile').classList.contains('active')) renderTeile(); if (current && current.sel) (current.ret ? renderRetoure() : renderResult()); }
 
 // ---------- Navigation ----------
-document.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.v));
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => { if (b.dataset.v === 'teile' && $('#v-teile').classList.contains('active') && !$('#teilCard').hidden) closePart(); show(b.dataset.v); });
 function show(v) {
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
   document.querySelectorAll('section').forEach((s) => s.classList.toggle('active', s.id === 'v-' + v));
   document.body.classList.toggle('setup', v === 'setup');
-  if (v !== 'scan' && mode !== 'pick') { mode = 'pick'; renderMode(); }
+  if (v !== 'scan' && mode !== 'pick') { if (mode === 'barcode') bcTarget = null; mode = 'pick'; renderMode(); }
+  if (v === 'teile' && $('#teilCard').hidden) renderTeile();
   if (v !== 'scan') pauseLoop(); else resumeLoop();
 }
 function confirmDlg(text) {
@@ -510,7 +548,12 @@ const mergeChecks = (remote, local) => {
 };
 function mergeMemory(remote, local) {
   remote = remote || {}; local = local || {};
-  const out = { parts: { ...(remote.parts || {}) }, ean: { ...(remote.ean || {}), ...(local.ean || {}) }, ocr: { ...(remote.ocr || {}), ...(local.ocr || {}) }, prefix: { ...(remote.prefix || {}), ...(local.prefix || {}) } };
+  const out = { parts: { ...(remote.parts || {}) }, ean: {}, eanAt: {}, ocr: { ...(remote.ocr || {}), ...(local.ocr || {}) }, prefix: { ...(remote.prefix || {}), ...(local.prefix || {}) } };
+  const rE = remote.ean || {}, lE = local.ean || {}, rA = remote.eanAt || {}, lA = local.eanAt || {};
+  for (const c of new Set([...Object.keys(rE), ...Object.keys(lE)])) {
+    const useL = (c in lE) && (!(c in rE) || ((lA[c] && lA[c].at) || '') >= ((rA[c] && rA[c].at) || ''));
+    out.ean[c] = useL ? lE[c] : rE[c]; const a = useL ? lA[c] : rA[c]; if (a) out.eanAt[c] = a;
+  }
   for (const [k, l] of Object.entries(local.parts || {})) {
     const r = out.parts[k];
     if (!r) { out.parts[k] = l; continue; }
@@ -616,6 +659,16 @@ function showOtherDay(od, ctx) {
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// ---------- Barcodes (gelernt, mit Zeitstempel) ----------
+function eansOf(k) { return Object.entries(memory.ean || {}).filter(([, v]) => v === k).map(([c]) => c); }
+function setEan(code, k, it) {
+  const c = Matcher.norm(code); memory.ean[c] = k; (memory.eanAt || (memory.eanAt = {}))[c] = { at: nowIso(), by: cfg.name };
+  if (it) partOf(k, it); else if (!memory.parts[k]) { const ci = catalog().get(k); if (ci) partOf(k, ci); }
+  dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon();
+}
+function delEan(code) { memory.ean[code] = ''; (memory.eanAt || (memory.eanAt = {}))[code] = { at: nowIso(), by: cfg.name, del: true }; dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon(); }
+const partNr = (k) => (memory.parts[k] && memory.parts[k].n) || (catalog().get(k) || {}).nummer || k;
+
 // ---------- Lernen ----------
 function partOf(k, it) { return memory.parts[k] || (memory.parts[k] = { n: it.nummer, bez: it.bez || '', marke: '', count: 0, kunden: {}, ean: [], photo: false, last: '' }); }
 function brandOf(it) { const p = memory.parts[Matcher.norm(it.nummer)]; return (p && p.marke) || Brands.fromNumber(it.nummer, memory.prefix); }
@@ -626,7 +679,7 @@ function learn(it, ctx) {
   if (ctx) {
     const brand = Brands.fromText(ctx.text);
     if (brand) { p.marke = brand; const pf = Brands.prefix(it.nummer); if (pf) memory.prefix[pf] = brand; }
-    if (ctx.barcode) { const b = Matcher.norm(ctx.barcode); memory.ean[b] = k; if (!p.ean.includes(b)) p.ean.push(b); }
+    if (ctx.barcode) { const b = Matcher.norm(ctx.barcode); const cur = memory.ean[b]; if (!cur || cur === k) { memory.ean[b] = k; (memory.eanAt || (memory.eanAt = {}))[b] = { at: nowIso(), by: cfg.name }; } }
     if (ctx.hit && !ctx.hit.exact && ctx.hit.cand) memory.ocr[Matcher.fuzzy(ctx.hit.cand)] = k;
     if (ctx.thumb && !p.photo) {
       p.photo = true; photoMem[k] = ctx.thumb; idb.set(k, ctx.thumb);
@@ -714,7 +767,45 @@ function thumb(src, sx, sy, sw, sh) {
 }
 let barcodeDetector = null;
 try { if ('BarcodeDetector' in window) barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a'] }); } catch (e) {}
-async function readBarcodes(src) { if (!barcodeDetector) return []; try { return (await barcodeDetector.detect(src)).map((b) => b.rawValue); } catch (e) { return []; } }
+// EAN-Prüfziffer prüfen (verhindert Fehl-Lesungen)
+function eanOk(c) {
+  if (!/^\d{8}$|^\d{12,13}$/.test(c)) return /^[\x20-\x7e]{4,}$/.test(c); // Code128 & Co.: nur druckbare Zeichen
+  const d = c.split('').map(Number); const chk = d.pop(); let sum = 0;
+  d.reverse().forEach((x, i) => { sum += x * (i % 2 === 0 ? 3 : 1); });
+  return (10 - (sum % 10)) % 10 === chk;
+}
+// Eigener Barcode-Leser für Geräte ohne eingebauten (z. B. iPhone)
+let qCount = 0;
+// Quagga verträgt keine gleichzeitigen Aufrufe -> nacheinander abarbeiten
+let qChain = Promise.resolve();
+function quaggaRead(...args) { const run = qChain.then(() => quaggaReadNow(...args)); qChain = run.catch(() => {}); return run; }
+function quaggaReadNow(src, sx, sy, sw, sh, size) {
+  if (!self.Quagga) return Promise.resolve([]);
+  try {
+    const cv = $('#cv3'); const sc = Math.min(1, size / Math.max(sw, sh));
+    cv.width = Math.round(sw * sc); cv.height = Math.round(sh * sc);
+    cv.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+    const url = cv.toDataURL('image/jpeg', 0.85);
+    return new Promise((res) => {
+      const t = setTimeout(() => res([]), 4000);
+      try {
+        Quagga.decodeSingle({ src: url, numOfWorkers: 0, inputStream: { size }, locate: true,
+          decoder: { readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'code_128_reader'] } },
+          (r) => { clearTimeout(t); const c = r && r.codeResult && r.codeResult.code; res(c && eanOk(c) ? [c] : []); });
+      } catch (e) { clearTimeout(t); res([]); }
+    });
+  } catch (e) { return Promise.resolve([]); }
+}
+async function readBarcodes(src, full) {
+  if (barcodeDetector) { try { return (await barcodeDetector.detect(src)).map((b) => b.rawValue).filter(eanOk); } catch (e) { return []; } }
+  const w = src.videoWidth || src.width, h = src.videoHeight || src.height; if (!w || !h) return [];
+  if (full) { // Foto: ganzes Bild, dann Mitte
+    let c = await quaggaRead(src, 0, 0, w, h, 1200); if (c.length) return c;
+    return quaggaRead(src, w * 0.15, h * 0.2, w * 0.7, h * 0.6, 1000);
+  }
+  if (++qCount % 2) return []; // live: nur jedes 2. Bild, damit die Texterkennung flüssig bleibt
+  return quaggaRead(src, 0, 0, w, h, 900);
+}
 
 // ---------- Kamera ----------
 const video = $('#video');
@@ -783,7 +874,28 @@ async function loop() {
     if (!video.videoWidth) { await new Promise((r) => setTimeout(r, 200)); continue; }
     $('#frame').classList.add('busy');
     try {
+      if (mode === 'barcode') {
+        const [x, y, w, h] = frameRect();
+        let c = [];
+        if (barcodeDetector) c = await readBarcodes(video);
+        else { c = await quaggaRead(video, 0, Math.max(0, y - h), video.videoWidth, Math.min(video.videoHeight, h * 3), 1000); }
+        if (paused || !stream || mode !== 'barcode') { $('#frame').classList.remove('busy'); continue; }
+        if (c.length) { $('#frame').classList.remove('busy'); looping = false; pauseLoop(); onBarcodeFound(c[0]); return; }
+        if (Date.now() - scanStart > 8000) setStatus('Kein Barcode erkannt – Barcode quer in den Rahmen, etwas Abstand, gutes Licht. Oder „Foto machen“.');
+        $('#frame').classList.remove('busy'); continue;
+      }
       const codes = await readBarcodes(video);
+      if (mode === 'lookup') {
+        const [x, y, w, h] = frameRect();
+        let k = null; for (const c of codes) { const v = memory.ean[Matcher.norm(c)]; if (v) { k = v; break; } }
+        let text = '', hits = [];
+        if (!k) { text = (await ocr(await grab(video, x, y, w, h, 1100))).text || ''; hits = retHits(text, []); }
+        if (paused || !stream || mode !== 'lookup') { $('#frame').classList.remove('busy'); continue; }
+        if (!k && hits.length) { const top = hits[0]; if (top.exact || top.score >= 100 || lastHit === top.i) k = Matcher.norm(items[top.i].nummer); else { lastHit = top.i; setStatus('Fast… bitte ruhig halten'); } }
+        if (k) { $('#frame').classList.remove('busy'); looping = false; feedback(); mode = 'pick'; renderMode(); show('teile'); openPart(k); return; }
+        if (!hits.length && Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran oder oben im Reiter „Teile“ suchen.');
+        $('#frame').classList.remove('busy'); continue;
+      }
       if (mode === 'retoure') {
         const [x, y, w, h] = frameRect();
         let hits = []; for (const c of codes) hits = hits.concat(Matcher.matchBarcode(c, items, memory.ean, ALL));
@@ -838,8 +950,15 @@ $('#photo').onchange = async (e) => {
   pauseLoop(); hideResult(); setStatus('Foto wird gelesen…');
   try {
     const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(async () => { const im = new Image(); im.src = URL.createObjectURL(f); await im.decode(); return im; });
-    const codes = await readBarcodes(img); let hits = barcodeHits(codes), text = '';
+    const codes = await readBarcodes(img, true); let hits = barcodeHits(codes), text = '';
     const w = img.width, h = img.height;
+    if (mode === 'barcode') { if (codes.length) { setStatus(''); onBarcodeFound(codes[0]); } else setStatus('Kein Barcode auf dem Foto erkannt – näher an den Barcode und nochmal.'); return; }
+    if (mode === 'lookup') {
+      let k = null; for (const c of codes) { const v = memory.ean[Matcher.norm(c)]; if (v) { k = v; break; } }
+      if (!k) { text = (await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text; const hh = retHits(text, []); if (hh.length) k = Matcher.norm(items[hh[0].i].nummer); }
+      if (k) { mode = 'pick'; renderMode(); show('teile'); openPart(k); } else setStatus('Teil nicht gefunden – oben im Reiter „Teile“ suchen.');
+      return;
+    }
     if (mode === 'retoure') {
       let rh = retHits('', codes);
       if (!rh.length) { text = (await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text; rh = retHits(text, []); }
@@ -866,6 +985,8 @@ $('#photo').onchange = async (e) => {
 $('#manual').onsubmit = (e) => {
   e.preventDefault();
   const q = $('#manualIn').value.trim(); if (!q) return;
+  if (mode === 'barcode') { if (/^\d{8,14}$/.test(q.replace(/\s/g, ''))) { $('#manualIn').value = ''; onBarcodeFound(q.replace(/\s/g, '')); } else setStatus('Bitte nur die Ziffern unter dem Barcode eintippen (8–14 Stellen).'); return; }
+  if (mode === 'lookup') { mode = 'pick'; renderMode(); show('teile'); $('#teileQ').value = q; renderTeile(); $('#manualIn').value = ''; return; }
   if (mode === 'retoure') {
     const nq = Matcher.norm(q); let h = Matcher.match(q, indexAll);
     if (nq.length >= 3) items.forEach((it, i) => { if ((Matcher.norm(it.nummer).includes(nq) || (nq.length >= 4 && Matcher.norm(it.bez).includes(nq))) && !h.some((x) => x.i === i)) h.push({ i, score: 50 }); });
@@ -899,7 +1020,8 @@ function renderResult() {
   const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const marke = brandOf(it);
   const alts = current.hits.filter((h) => h.id !== current.sel).map((h) => idxOf(h.id)).filter((j) => j >= 0).slice(0, 4);
   const top = p ? Object.entries(p.kunden || {}).sort((a, b) => b[1] - a[1])[0] : null;
-  const learnTxt = [marke, p && p.count ? `schon ${p.count}× gescannt` : 'zum ersten Mal gescannt', top && top[1] > 1 ? `meist für ${top[0]}` : ''].filter(Boolean).join(' · ');
+  const eans = eansOf(k);
+  const learnTxt = [marke, p && p.count ? `schon ${p.count}× gescannt` : 'zum ersten Mal gescannt', eans.length ? `Barcode bekannt (${eans[eans.length - 1]})` : current.ctx && current.ctx.barcode ? `Barcode ${current.ctx.barcode} wird gelernt` : '', top && top[1] > 1 ? `meist für ${top[0]}` : ''].filter(Boolean).join(' · ');
   const q = it.qty || 1; const isDa = (it.da || 0) >= q; const other = it.datum !== activeDate;
   r.className = done ? 'done' : '';
   r.innerHTML = `
@@ -918,8 +1040,10 @@ function renderResult() {
       ${done ? '' : isDa ? '' : '<button class="btn da" id="rDa">📦 Ist da</button>'}
       ${done ? '' : '<button class="btn ok" id="rDone">✓ Abgegeben</button>'}
       <button class="btn" id="rNext">Weiter</button>
-    </div>`;
+    </div>
+    <button class="btn small ${eans.length ? 'bcok' : 'bcmiss'}" style="width:100%;margin-top:8px" id="rBc">🏷 ${eans.length ? 'Barcode ✓ (' + eans.length + ') – weiteren scannen' : 'Barcode fehlt – jetzt scannen'}</button>`;
   r.hidden = false; fillThumbs(r);
+  $('#rBc').onclick = () => startBarcode(k, it.nummer, it, 'result');
   r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = b.dataset.alt; renderResult(); });
   const act = (kind) => {
     const j = idxOf(current.sel); if (j < 0) return nextScan();
@@ -933,6 +1057,96 @@ function renderResult() {
   $('#rNext').onclick = nextScan;
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+// ---------- Barcode einem Teil beibringen ----------
+let bcTarget = null;
+function startBarcode(k, nummer, it, back) {
+  bcTarget = { k, nummer, it, back, saved: back === 'result' ? current : null };
+  hideResult(); mode = 'barcode'; show('scan'); renderMode(); setStatus(''); scanStart = Date.now();
+  if (!stream) startCam(); else { paused = false; loop(); }
+}
+async function onBarcodeFound(code) {
+  if (!bcTarget) return; const c = Matcher.norm(code); const { k, nummer } = bcTarget; const cur = memory.ean[c];
+  feedback();
+  let v;
+  if (cur === k) v = await choiceDlg(`Barcode ${c} ist bei ${nummer} schon gespeichert ✓`, [{ label: 'OK', value: 'end', cls: 'primary' }, { label: 'Anderen Barcode scannen', value: 'again' }]);
+  else if (cur) { warnSound(); v = await choiceDlg(`⚠ Barcode ${c} gehört schon zu ${partNr(cur)}. Durch ${nummer} ersetzen?`, [{ label: 'Ersetzen', value: 'save', cls: 'da' }, { label: 'Nochmal scannen', value: 'again' }, { label: 'Abbrechen', value: 'end' }]); }
+  else v = await choiceDlg(`Barcode ${c} gehört zu ${nummer}?`, [{ label: '✓ Ja, speichern', value: 'save', cls: 'ok' }, { label: 'Nochmal scannen', value: 'again' }, { label: 'Abbrechen', value: 'end' }]);
+  if (v === 'save') { setEan(c, k, bcTarget.it); setStatus(`🏷 Barcode ${c} für ${nummer} gespeichert – gilt für alle Handys.`); return endBarcode(); }
+  if (v === 'again') { scanStart = Date.now(); paused = false; if (stream) loop(); else startCam(); return; }
+  endBarcode();
+}
+function endBarcode() {
+  const t = bcTarget; bcTarget = null; mode = 'pick'; renderMode(); pauseLoop();
+  if (!t) return;
+  if (t.back === 'result' && t.saved) { current = t.saved; if (current.ret) renderRetoure(); else renderResult(); }
+  else if (t.back === 'part') { show('teile'); openPart(t.k); }
+}
+
+// ---------- Reiter "Teile" ----------
+let catCache = null;
+function catalog() {
+  if (catCache) return catCache;
+  const m = new Map();
+  for (const it of items) { const k = Matcher.norm(it.nummer); const e = m.get(k); if (!e) m.set(k, { k, nummer: it.nummer, bez: it.bez || '', n: 1, last: it.datum || '' }); else { e.n++; if ((it.datum || '') >= e.last) { e.last = it.datum || ''; if (it.bez) e.bez = it.bez; } } }
+  for (const [k, p] of Object.entries(memory.parts || {})) if (!m.has(k)) m.set(k, { k, nummer: p.n || k, bez: p.bez || '', n: 0, last: '' });
+  return (catCache = m);
+}
+const partFotos = (k) => { const p = memory.parts[k] || {}; return [...(p.photo ? [{ pk: k, box: true }] : []), ...(p.fotos || [])]; };
+$('#lookBtn').onclick = () => { mode = 'lookup'; show('scan'); renderMode(); hideResult(); setStatus(''); scanStart = Date.now(); if (!stream) startCam(); else { paused = false; loop(); } };
+$('#teileQ').oninput = () => renderTeile();
+function renderTeile() {
+  const q = $('#teileQ').value.trim(); const nq = Matcher.norm(q); const cat = [...catalog().values()];
+  let res;
+  if (!nq) res = cat.filter((e) => memory.parts[e.k]).sort((a, b) => ((memory.parts[b.k] || {}).last || '').localeCompare((memory.parts[a.k] || {}).last || '')).slice(0, 20);
+  else {
+    const byEan = new Set(Object.entries(memory.ean || {}).filter(([c, v]) => v && c.includes(nq)).map(([, v]) => v));
+    res = cat.filter((e) => Matcher.norm(e.nummer).includes(nq) || (nq.length >= 2 && Matcher.norm(e.bez).includes(nq)) || byEan.has(e.k))
+      .sort((a, b) => (Matcher.norm(b.nummer).startsWith(nq) - Matcher.norm(a.nummer).startsWith(nq)) || b.n - a.n).slice(0, 50);
+  }
+  $('#teileCount').textContent = nq ? `${res.length}${res.length === 50 ? '+' : ''} ${res.length === 1 ? 'Teil' : 'Teile'} gefunden · Name, Nummer oder Barcode` : (res.length ? 'Zuletzt gescannte Teile' : `${cat.length} Teile in den Listen – oben suchen oder scannen`);
+  $('#teileRes').hidden = !res.length;
+  $('#teileRes').innerHTML = res.map((e) => { const f = partFotos(e.k)[0]; const ne = eansOf(e.k).length; const nf = partFotos(e.k).length; const mk = (memory.parts[e.k] && memory.parts[e.k].marke) || Brands.fromNumber(e.nummer, memory.prefix);
+    return `<div class="sr" data-k="${esc(e.k)}">${f ? `<img class="ph" data-ph="${esc(f.pk)}" alt="">` : '<div class="ph"></div>'}<div style="flex:1;min-width:0"><div style="font-weight:700">${esc(e.nummer)}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}</div><div style="color:var(--muted);font-size:14px">${esc(e.bez)}</div>
+      <div class="st ${ne ? 'ok' : 'miss'}">${ne ? `🏷 ${ne} Barcode${ne > 1 ? 's' : ''}` : '🏷 Barcode fehlt'}${nf ? ` · 📷 ${nf} Foto${nf > 1 ? 's' : ''}` : ''}</div></div><span class="muted">›</span></div>`; }).join('');
+  $('#teileRes').querySelectorAll('.sr').forEach((el) => el.onclick = () => openPart(el.dataset.k));
+  fillThumbs($('#teileRes'));
+}
+let partOpen = null;
+function openPart(k) {
+  partOpen = k; const e = catalog().get(k) || { k, nummer: partNr(k), bez: '' }; const p = memory.parts[k] || {};
+  const mk = p.marke || Brands.fromNumber(e.nummer, memory.prefix); const fotos = partFotos(k); const eans = eansOf(k);
+  const card = $('#teilCard');
+  card.innerHTML = `<div class="muted" style="margin:0 2px 8px;cursor:pointer" id="partBack">‹ Zurück zur Suche</div>
+    <div class="card">
+      <div style="display:flex;gap:12px">${fotos[0] ? `<img data-ph="${esc(fotos[0].pk)}" style="width:86px;height:86px;border-radius:10px;object-fit:cover" alt="">` : ''}<div><div style="font-size:24px;font-weight:800">${esc(e.nummer)}</div><div>${esc(e.bez || p.bez || '')}</div>${mk ? `<div class="mk" style="margin:0">${esc(mk)}</div>` : ''}${e.n ? `<div class="muted" style="font-size:13px">${e.n}× in den Listen${p.count ? ' · ' + p.count + '× gescannt' : ''}</div>` : ''}</div></div>
+      <h2 style="margin-top:14px">🏷 Barcodes</h2>
+      ${eans.length ? eans.map((c) => { const a = (memory.eanAt || {})[c]; return `<div class="bcrow"><span>${esc(c)}</span><span class="muted" style="font-size:13px">${a ? 'gelernt ' + dayTime(a.at).split(' ')[0] + ' · ' + esc(a.by) : ''}<button class="x" data-del="${esc(c)}" aria-label="Löschen">🗑</button></span></div>`; }).join('') : '<div class="muted" style="font-size:14px">Noch kein Barcode gelernt.</div>'}
+      <button class="btn small ${eans.length ? '' : 'bcmiss'}" style="width:100%;margin-top:8px" id="partBc">+ Barcode scannen</button>
+      <h2 style="margin-top:14px">📷 Fotos <span class="muted" style="font-size:13px;font-weight:400">(${fotos.length} von 6)</span></h2>
+      <div class="pg">${fotos.map((f, i) => `<div class="pgi"><img data-ph="${esc(f.pk)}" alt="" data-view="${i}"><button class="x" data-fdel="${i}" aria-label="Foto löschen">×</button>${f.box ? '<span class="lab">Karton</span>' : ''}</div>`).join('')}${fotos.length < 6 ? '<div class="pgi pgadd" id="partAddPh">＋</div>' : ''}</div>
+    </div>`;
+  $('#teileList').hidden = true; card.hidden = false; fillThumbs(card);
+  $('#partBack').onclick = closePart;
+  $('#partBc').onclick = () => startBarcode(k, e.nummer, null, 'part');
+  card.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { if (await confirmDlg(`Barcode ${b.dataset.del} bei ${e.nummer} löschen?`)) { delEan(b.dataset.del); openPart(k); } });
+  card.querySelectorAll('[data-view]').forEach((im) => im.onclick = async () => { const f = fotos[+im.dataset.view]; $('#photoTitle').textContent = e.nummer; $('#photoImg').src = (await getPhoto(f.pk)) || ''; $('#photoCap').textContent = f.box ? 'Kartonfoto (beim Scannen gelernt)' : `Foto vom ${dayTime(f.at)} · ${f.by || ''}`; $('#photoNew').hidden = true; $('#photoDlg').hidden = false; });
+  card.querySelectorAll('[data-fdel]').forEach((b) => b.onclick = async (ev) => {
+    ev.stopPropagation(); if (!(await confirmDlg('Foto löschen?'))) return;
+    const f = fotos[+b.dataset.fdel]; const pp = partOf(k, { nummer: e.nummer, bez: e.bez });
+    if (f.box) pp.photo = false; else pp.fotos = (pp.fotos || []).filter((x) => x.pk !== f.pk);
+    dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon(); openPart(k);
+  });
+  if ($('#partAddPh')) $('#partAddPh').onclick = async () => {
+    const data = await pickPhoto(); if (!data) return;
+    const pk = 'P' + fnv(k) + Date.now().toString(36); const at = nowIso();
+    photoMem[pk] = data; idb.set(pk, data);
+    ensureConn().then(() => Sync.writeFile(conn, 'photos/' + pk + '.enc', { img: data, at, by: cfg.name }, null, (r, l) => l, 'Teilfoto')).catch(() => {});
+    const pp = partOf(k, { nummer: e.nummer, bez: e.bez }); pp.fotos = [...(pp.fotos || []), { pk, at, by: cfg.name }].slice(0, 6);
+    dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon(); if (partOpen === k) openPart(k);
+  };
+}
+function closePart() { partOpen = null; $('#teilCard').hidden = true; $('#teileList').hidden = false; renderTeile(); }
+
 // ---------- Retoure ----------
 const FRIST_TAGE = 28;          // 4 Wochen ab Erhalt; der 28. Tag zählt noch
 const WARN_TAGE = 3;            // ab 3 Tagen vor Ablauf gelb
@@ -1000,12 +1214,20 @@ function renderRetoure() {
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function renderMode() {
-  $('#modeBar').hidden = mode !== 'retoure';
-  $('#scanDay').hidden = mode === 'retoure'; $('#stand1').hidden = mode === 'retoure';
-  $('#manualIn').placeholder = mode === 'retoure' ? 'Retoure: Nummer eintippen' : 'Nummer eintippen, z. B. 26100';
+  const special = mode !== 'pick';
+  $('#modeBar').hidden = !special; $('#modeBar').className = mode === 'barcode' ? 'bc' : mode === 'lookup' ? 'look' : '';
+  $('#modeText').textContent = mode === 'retoure' ? '↩ RETOURE-MODUS' : mode === 'barcode' ? `🏷 BARCODE für ${bcTarget ? bcTarget.nummer : ''}` : mode === 'lookup' ? '🔍 NACHSCHAUEN – nichts wird abgehakt' : '';
+  $('#modeEnd').textContent = mode === 'barcode' ? 'Abbrechen' : 'Beenden';
+  $('#scanDay').hidden = special; $('#stand1').hidden = special;
+  $('#frame').classList.toggle('wide', mode === 'barcode');
+  $('#camHint').textContent = mode === 'barcode' ? 'Barcode in den Rahmen halten' : 'Nummer in den Rahmen halten';
+  $('#manualIn').placeholder = mode === 'retoure' ? 'Retoure: Nummer eintippen' : mode === 'barcode' ? 'Barcode-Ziffern eintippen' : mode === 'lookup' ? 'Nummer eintippen' : 'Nummer eintippen, z. B. 26100';
 }
-$('#retScan').onclick = () => { show('scan'); mode = 'retoure'; renderMode(); hideResult(); setStatus(''); if (!stream) startCam(); };
-$('#modeEnd').onclick = () => { mode = 'pick'; renderMode(); hideResult(); show('retoure'); };
+$('#retScan').onclick = () => { mode = 'retoure'; show('scan'); renderMode(); hideResult(); setStatus(''); if (!stream) startCam(); };
+$('#modeEnd').onclick = () => {
+  if (mode === 'barcode') return endBarcode();
+  const was = mode; mode = 'pick'; renderMode(); hideResult(); show(was === 'lookup' ? 'teile' : 'retoure');
+};
 
 let retDay = isoToday(0);
 function renderRetList() {
@@ -1060,7 +1282,7 @@ function showAssign(code, th) {
     $('#assignList').innerHTML = cand.map(({ it }) => `<button class="btn small" data-id="${esc(it.id)}"><b>${esc(it.nummer)}</b>&nbsp;· ${esc(it.kunde)} / ${esc(it.owner)}${it.bez ? ' · ' + esc(it.bez) : ''}</button>`).join('') || '<div class="muted">Nichts gefunden.</div>';
     $('#assignList').querySelectorAll('[data-id]').forEach((b) => b.onclick = () => {
       const i = idxOf(b.dataset.id); if (i < 0) return;
-      const k = Matcher.norm(items[i].nummer); memory.ean[Matcher.norm(code)] = k; const p = partOf(k, items[i]); if (!p.ean.includes(Matcher.norm(code))) p.ean.push(Matcher.norm(code));
+      const k = Matcher.norm(items[i].nummer); memory.ean[Matcher.norm(code)] = k; (memory.eanAt || (memory.eanAt = {}))[Matcher.norm(code)] = { at: nowIso(), by: cfg.name }; partOf(k, items[i]);
       dirty.memory = (dirty.memory || 0) + 1; persist(); syncSoon();
       showResult([{ i, score: 200, exact: true }], { barcode: code, text: '', thumb: th });
     });
@@ -1132,6 +1354,7 @@ $('#hoIn').onchange = async (e) => {
   } catch (err) { setStatus('Foto konnte nicht gespeichert werden: ' + err.message); }
 };
 async function showHandover(k, title) {
+  $('#photoNew').hidden = false;
   const c = checks[k]; if (!c || !c.photo) return;
   $('#photoTitle').textContent = title; $('#photoImg').src = ''; $('#photoCap').textContent = 'Lade Foto…'; $('#photoDlg').hidden = false;
   const p = await getPhoto(hoPhotoKey(k));
@@ -1325,6 +1548,8 @@ function renderAll() {
   $('#dNext').disabled = activeDate >= maxDay();
   $('#scanDay').innerHTML = items.length ? `Scanne alle Listen vom <b>${fmtLong(activeDate)}</b> · ✓ ${allDone}/${all.length} abgegeben · <u>Tag ändern</u>` : '';
   renderStand(); renderLists(); renderKunden(); renderRetList(); renderStart(); setDot();
+  const parts = Object.values(memory.parts || {});
+  $('#learnInfo').textContent = `${parts.length} Teile kennt die App · ${Object.keys(memory.ean || {}).length} Barcodes · ${parts.filter((p) => p.photo).length} Kartonfotos · ${Object.keys(memory.prefix || {}).length} Marken-Kürzel. Jedes Abhaken bringt der App etwas Neues bei – für alle Handys.`;
 }
 function renderStand() {
   const owners = Object.keys(lists).sort();
