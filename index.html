@@ -309,6 +309,13 @@
     </div>
 
     <div class="card">
+      <h2>App-Start</h2>
+      <div class="muted" style="font-size:14px">Alles, was <b>vor</b> diesem Tag bestellt wurde, gilt automatisch als „ist da“ und „abgegeben“. Für Retouren zählt bei diesen Teilen das Datum aus der Liste als Erhalt-Datum.</div>
+      <div class="row" style="margin-top:10px"><input type="date" id="startIn" style="flex:2"><button class="btn small" id="startSave" style="flex:1">Speichern</button></div>
+      <div id="startMsg" style="margin-top:6px;font-size:14px"></div>
+    </div>
+
+    <div class="card">
       <h2>Verbindung</h2>
       <div id="syncInfo" class="muted" style="font-size:14px"></div>
       <div class="row" style="margin-top:12px">
@@ -403,7 +410,10 @@ const onDay = (it) => it.datum === activeDate;
 const inFilter = (it) => ownerFilter === 'Alle' || it.owner === ownerFilter;
 let index = [];
 
+const START_DEFAULT = self.__TS_START_DEFAULT || '2026-11-01'; // (Test-Hook)
+const appStart = () => (checks['CFG|start'] && checks['CFG|start'].start) || START_DEFAULT;
 function rebuildItems() {
+  const start = appStart();
   items = [];
   for (const owner of Object.keys(lists).sort()) {
     const seen = {};
@@ -411,8 +421,15 @@ function rebuildItems() {
       const base = owner + '|' + x.kunde + '|' + x.datum + '|' + Matcher.norm(x.nummer);
       seen[base] = (seen[base] || 0) + 1;
       const id = base + '|' + seen[base];
-      const c = checks[id] || {};
-      items.push({ ...x, owner, id, done: c.n || 0, by: c.by, at: c.at, da: Math.max(c.da || 0, c.n || 0), daBy: c.daBy || c.by, daAt: c.daAt || c.at });
+      const c = checks[id];
+      if (!c && x.datum && x.datum < start) {
+        // vor App-Start: gilt als da + abgegeben; Erhalt = Datum aus der Liste
+        const q = x.qty || 1; const at = new Date(x.datum + 'T12:00:00').toISOString();
+        items.push({ ...x, owner, id, done: q, by: 'vor App-Start', at, da: q, daBy: 'vor App-Start', daAt: at, virtual: true });
+        continue;
+      }
+      const cc = c || {};
+      items.push({ ...x, owner, id, done: cc.n || 0, by: cc.by, at: cc.at, da: Math.max(cc.da || 0, cc.n || 0), daBy: cc.daBy || cc.by, daAt: cc.daAt || cc.at });
     }
   }
 }
@@ -485,7 +502,7 @@ const mergeChecks = (remote, local) => {
   const out = { ...remote };
   for (const [k, v] of Object.entries(local || {})) {
     const r = out[k]; if (!r) { out[k] = v; continue; }
-    if (k.startsWith('H|')) { if ((v.at || '') > (r.at || '')) out[k] = v; continue; }
+    if (k.startsWith('H|') || k.startsWith('CFG|')) { if ((v.at || '') > (r.at || '')) out[k] = v; continue; }
     const ab = (v.at || '') > (r.at || '') ? v : r; const da = (v.da > 0 && r.da > 0) ? ((v.daAt || '') < (r.daAt || '') ? v : r) : ((v.daAt || '') > (r.daAt || '') ? v : r); // wer es zuerst bereitgelegt hat, bleibt stehen
     out[k] = { ...ab, n: ab.n, by: ab.by, at: ab.at, da: da.da, daBy: da.daBy, daAt: da.daAt };
   }
@@ -924,15 +941,15 @@ const dayNum = (iso) => { const [y, m, d] = iso.split('-').map(Number); return M
 // Frist-Status eines Teils: erhalten = Zeitpunkt des Abhakens
 function frist(it) {
   if (!((it.done || 0) > 0 && it.at)) return { status: 'unk' };
-  const erh = localDay(it.at); const ende = addDays(erh, FRIST_TAGE); const heute = isoToday(0);
+  const erh = it.virtual ? it.datum : localDay(it.at); const ende = addDays(erh, FRIST_TAGE); const heute = isoToday(0);
   const seit = dayNum(heute) - dayNum(erh); const rest = dayNum(ende) - dayNum(heute);
-  return { status: rest < 0 ? 'late' : rest <= WARN_TAGE ? 'soon' : 'ok', erhalten: erh, ende, seit, rest };
+  return { status: rest < 0 ? 'late' : rest <= WARN_TAGE ? 'soon' : 'ok', erhalten: erh, ende, seit, rest, liste: !!it.virtual };
 }
 function fristBox(f) {
   if (f.status === 'unk') return '<div class="fbox unk"><span class="big">Erhalt unbekannt</span>Das Teil wurde nie abgehakt.</div>';
-  if (f.status === 'late') return `<div class="fbox late"><span class="big">⛔ Frist abgelaufen</span>erhalten am ${fmtLong(f.erhalten)} (vor ${f.seit} Tagen) · Frist endete am ${fmtLong(f.ende)}</div>`;
-  if (f.status === 'soon') return `<div class="fbox soon"><span class="big">⚠ Retoure in Frist – endet ${f.rest === 0 ? 'heute' : f.rest === 1 ? 'morgen' : 'in ' + f.rest + ' Tagen'}</span>erhalten am ${fmtLong(f.erhalten)} · letzter Tag ${fmtLong(f.ende)}</div>`;
-  return `<div class="fbox ok"><span class="big">✅ Retoure in Frist</span>erhalten am ${fmtLong(f.erhalten)} · noch ${f.rest} Tage (bis ${fmtLong(f.ende)})</div>`;
+  if (f.status === 'late') return `<div class="fbox late"><span class="big">⛔ Frist abgelaufen</span>${f.liste ? 'laut Liste ' : ''}erhalten am ${fmtLong(f.erhalten)} (vor ${f.seit} Tagen) · Frist endete am ${fmtLong(f.ende)}</div>`;
+  if (f.status === 'soon') return `<div class="fbox soon"><span class="big">⚠ Retoure in Frist – endet ${f.rest === 0 ? 'heute' : f.rest === 1 ? 'morgen' : 'in ' + f.rest + ' Tagen'}</span>${f.liste ? 'laut Liste ' : ''}erhalten am ${fmtLong(f.erhalten)} · letzter Tag ${fmtLong(f.ende)}</div>`;
+  return `<div class="fbox ok"><span class="big">✅ Retoure in Frist</span>${f.liste ? 'laut Liste ' : ''}erhalten am ${fmtLong(f.erhalten)} · noch ${f.rest} Tage (bis ${fmtLong(f.ende)})</div>`;
 }
 function fristTag(r) {
   if (r.frist === 'late') return `<span class="ftag late">⚠ nach Frist${r.erhalten ? ' (erhalten ' + fmtDate(r.erhalten) + ')' : ''}</span>`;
@@ -962,7 +979,7 @@ function renderRetoure() {
     <div class="lbl" style="margin-top:8px">Retoure von</div>
     <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
-    <div class="meta muted">bestellt am ${fmtDate(it.datum)}${(it.done || 0) > 0 && it.by ? ' · abgehakt von ' + esc(it.by) : ''}</div>
+    <div class="meta muted">bestellt am ${fmtDate(it.datum)}${it.virtual ? ' · vor App-Start' : (it.done || 0) > 0 && it.by ? ' · abgegeben von ' + esc(it.by) : ''}</div>
     ${prev ? `<div class="flag">Schon als Retoure erfasst am ${dayTime(prev.at)} von ${esc(prev.by)}</div>` : ''}
     ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder war es:</div><div class="alts">${alts.map((j) => { const fj = frist(items[j]); return `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${fmtDate(items[j].datum)}${fj.status === 'late' ? ' ⛔' : fj.status === 'unk' ? '' : ' ✓'}</button>`; }).join('')}</div>` : ''}
     <div class="muted" style="margin-top:10px;font-size:14px;clear:both">Grund (optional):</div>
@@ -1307,7 +1324,7 @@ function renderAll() {
   $('#dPick').value = activeDate; $('#dPick').max = maxDay();
   $('#dNext').disabled = activeDate >= maxDay();
   $('#scanDay').innerHTML = items.length ? `Scanne alle Listen vom <b>${fmtLong(activeDate)}</b> · ✓ ${allDone}/${all.length} abgegeben · <u>Tag ändern</u>` : '';
-  renderStand(); renderLists(); renderKunden(); renderRetList(); setDot();
+  renderStand(); renderLists(); renderKunden(); renderRetList(); renderStart(); setDot();
 }
 function renderStand() {
   const owners = Object.keys(lists).sort();
@@ -1656,6 +1673,15 @@ $('#logoutBtn').onclick = async () => {
   if (!(await confirmDlg('Dieses Handy abmelden? Die Listen bleiben für alle anderen erhalten.'))) return;
   ['cfg', 'lists', 'checks', 'memory', 'retouren', 'kunden', 'sha', 'dirty', 'lastSync'].forEach((k) => store.del(k));
   location.reload();
+};
+
+// ---------- App-Start-Datum ----------
+function renderStart() { if (document.activeElement !== $('#startIn')) $('#startIn').value = appStart(); const c = checks['CFG|start']; $('#startMsg').textContent = c ? `Gesetzt von ${c.by} am ${dayTime(c.at)}` : 'Standard: 01.11.2026'; }
+$('#startSave').onclick = async () => {
+  const v = $('#startIn').value; if (!v) return;
+  if (!(await confirmDlg(`App-Start auf den ${fmtLong(v)} setzen? Alles davor gilt dann für alle Handys als abgegeben.`))) return;
+  checks['CFG|start'] = { start: v, by: cfg.name, at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(300);
+  $('#startMsg').innerHTML = '<span class="ok-msg">Gespeichert ✓</span>';
 };
 
 // ---------- Start ----------
