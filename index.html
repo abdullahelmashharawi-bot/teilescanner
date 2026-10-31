@@ -169,6 +169,12 @@
   .gpsinfo { font-size: 13px; color: var(--muted); margin-top: 6px; }
   #routeDlg img { width: 100%; max-height: 40vh; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
   #dlg, #choiceDlg { z-index: 40; } #photoDlg, #routeDlg { z-index: 30; } #kDlg { z-index: 20; }
+  .item.ready .chk { background: rgba(242,201,76,.18); border-color: var(--warn); color: var(--warn); font-size: 14px; }
+  .item .who.da { color: var(--warn); }
+  .bar { display: flex; } .bar i.da { background: var(--warn); }
+  .flag.other { background: var(--warn); color: #222; }
+  .btn.da { background: var(--warn); color: #2a2100; }
+  #result.info { border-color: var(--line); }
   .stand { font-size: 12px; color: var(--muted); margin: -4px 2px 10px; }
   .stand .old { color: var(--warn); font-weight: 700; }
   #shareBox { white-space: pre-wrap; font-size: 14px; max-height: 45vh; overflow-y: auto; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
@@ -249,7 +255,7 @@
     <div class="owners" id="owners"></div>
     <div class="toolbar">
       <input type="text" id="filter" placeholder="Kunde oder Nummer suchen">
-      <button class="btn small ghost" id="toggleOpen">Nur offene</button>
+      <button class="btn small" id="toggleOpen" style="border:1px solid var(--accent)">Filter ▾</button>
     </div>
     <div id="kundenList"></div>
     <button class="btn" style="width:100%;margin-top:6px" id="shareOpen">📋 Offene Teile als Nachricht</button>
@@ -406,7 +412,7 @@ function rebuildItems() {
       seen[base] = (seen[base] || 0) + 1;
       const id = base + '|' + seen[base];
       const c = checks[id] || {};
-      items.push({ ...x, owner, id, done: c.n || 0, by: c.by, at: c.at });
+      items.push({ ...x, owner, id, done: c.n || 0, by: c.by, at: c.at, da: Math.max(c.da || 0, c.n || 0), daBy: c.daBy || c.by, daAt: c.daAt || c.at });
     }
   }
 }
@@ -474,7 +480,17 @@ async function ensureConn() {
   return conn;
 }
 const mergeRet = (remote, local) => { const out = { ...remote }; for (const [k, v] of Object.entries(local || {})) if (!out[k] || (v.at || '') > (out[k].at || '')) out[k] = v; return out; };
-const mergeChecks = (remote, local) => { const out = { ...remote }; for (const [k, v] of Object.entries(local || {})) if (!out[k] || (v.at || '') > (out[k].at || '')) out[k] = v; return out; };
+// "da" (kommissioniert) und "abgegeben" werden getrennt zusammengeführt – jeweils der neuere Stand gewinnt
+const mergeChecks = (remote, local) => {
+  const out = { ...remote };
+  for (const [k, v] of Object.entries(local || {})) {
+    const r = out[k]; if (!r) { out[k] = v; continue; }
+    if (k.startsWith('H|')) { if ((v.at || '') > (r.at || '')) out[k] = v; continue; }
+    const ab = (v.at || '') > (r.at || '') ? v : r; const da = (v.da > 0 && r.da > 0) ? ((v.daAt || '') < (r.daAt || '') ? v : r) : ((v.daAt || '') > (r.daAt || '') ? v : r); // wer es zuerst bereitgelegt hat, bleibt stehen
+    out[k] = { ...ab, n: ab.n, by: ab.by, at: ab.at, da: da.da, daBy: da.daBy, daAt: da.daAt };
+  }
+  return out;
+};
 function mergeMemory(remote, local) {
   remote = remote || {}; local = local || {};
   const out = { parts: { ...(remote.parts || {}) }, ean: { ...(remote.ean || {}), ...(local.ean || {}) }, ocr: { ...(remote.ocr || {}), ...(local.ocr || {}) }, prefix: { ...(remote.prefix || {}), ...(local.prefix || {}) } };
@@ -544,9 +560,43 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('online', () => sync());
 
 // Haken setzen (für alle sichtbar)
+// Abgegeben (beim Kunden) – zählt auch als "da"
 function setCheck(it, n) {
-  checks[it.id] = { n, by: cfg.name, at: nowIso() };
+  const c = checks[it.id] || {}; const now = nowIso();
+  checks[it.id] = { ...c, n, by: cfg.name, at: now, ...(n > (c.da || 0) ? { da: n, daBy: c.daBy || cfg.name, daAt: c.daAt || now } : {}) };
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+// Ist da (im Lager kommissioniert)
+function setDa(it, da) {
+  const c = checks[it.id] || {};
+  checks[it.id] = { ...c, da, daBy: cfg.name, daAt: nowIso() };
+  dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+function resetCheck(it) { checks[it.id] = { n: 0, by: cfg.name, at: nowIso(), da: 0, daBy: cfg.name, daAt: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(); }
+const OFFEN_TAGE = 14;  // Bestellungen anderer Tage gelten nur so lange als "offen"
+// Teil nicht am angezeigten Tag: in anderen Tagen suchen (offen & jung zuerst, sonst neueste)
+function otherDayFind(text, codes, loose) {
+  let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && (loose || x.score >= 110)) : [];
+  for (const c of codes || []) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, (it) => !onDay(it)));
+  if (!h.length) return null;
+  const limit = addDays(isoToday(0), -OFFEN_TAGE);
+  const its = [...new Set(h.map((x) => x.i))].map((i) => ({ i, it: items[i] }));
+  const open = its.filter(({ it }) => (it.done || 0) < (it.qty || 1) && (it.datum || '') >= limit).sort((a, b) => (b.it.datum || '').localeCompare(a.it.datum || ''));
+  const all = its.slice().sort((a, b) => (b.it.datum || '').localeCompare(a.it.datum || '') || ((b.it.at || '').localeCompare(a.it.at || '')));
+  return { key: Matcher.norm(items[(open[0] || all[0]).i].nummer), open: open.map((x) => ({ i: x.i, score: 150, exact: true })), last: all[0].it, lastI: all[0].i };
+}
+function showOtherDay(od, ctx) {
+  if (od.open.length) { showResult(od.open, ctx); return; }
+  // schon abgegeben -> nur Info
+  const it = od.last; const r = $('#result'); current = { info: true, hits: [] };
+  r.className = 'info';
+  r.innerHTML = `<div class="lbl">Teil vom ${fmtLong(it.datum)}</div>
+    <div class="kunde">${esc(it.kunde)} <span class="own">/ ${esc(it.owner)}</span></div>
+    <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
+    <div class="flag" style="background:var(--ok);color:#04210f">${(it.done || 0) > 0 ? `✓ Abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}` : 'Älter als ' + OFFEN_TAGE + ' Tage'}</div>
+    <div class="row actions"><button class="btn" id="rNext">Weiter</button></div>`;
+  r.hidden = false; $('#rNext').onclick = nextScan; feedback(); setStatus('');
+  r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ---------- Lernen ----------
@@ -738,8 +788,9 @@ async function loop() {
       if (paused || !stream || gen !== loopGen) break;
       if (!hits.length) {
         // nicht bestellt? (muss zweimal hintereinander gleich erkannt werden)
-        const od = otherDayHits(text, codes);
-        if (od) { if (lastWarn === od.key) { showNotOrdered(od); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        const od = otherDayFind(text, codes);
+        if (od) { if (lastWarn === od.key) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showOtherDay(od, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        if (codes.some((c) => memory.ean[Matcher.norm(c)])) { const od2 = otherDayHits('', codes); if (od2) { if (lastWarn === od2.key) { showNotOrdered(od2); break; } lastWarn = od2.key; $('#frame').classList.remove('busy'); continue; } }
         lastWarn = null;
         // unbekannter Barcode, mehrmals gesehen, aber keine Nummer lesbar -> zuordnen lassen
         const unk = codes.find((c) => !memory.ean[Matcher.norm(c)] && !ignoreCodes.has(c));
@@ -787,6 +838,7 @@ $('#photo').onchange = async (e) => {
     }
     const side = Math.min(w, h) * 0.8; const th = thumb(img, (w - side) / 2, (h - side) / 2, side, side);
     if (hits.length) showResult(hits, { barcode: codes[0], text, thumb: th });
+    else if (otherDayFind(text, codes, true)) showOtherDay(otherDayFind(text, codes, true), { barcode: codes[0], text, thumb: th });
     else if (otherDayHits(text, codes)) showNotOrdered(otherDayHits(text, codes));
     else if (codes.find((c) => !memory.ean[Matcher.norm(c)]) && items.some(onDay)) showAssign(codes.find((c) => !memory.ean[Matcher.norm(c)]), th);
     else setStatus(`Keine Nummer aus der Liste vom ${fmtLong(activeDate)} gefunden. Tipp: näher an das Etikett – oder eintippen.`);
@@ -806,8 +858,11 @@ $('#manual').onsubmit = (e) => {
   let hits = Matcher.match(q, index); const nq = Matcher.norm(q);
   if (nq.length >= 3) items.forEach((it, i) => { if (onDay(it) && Matcher.norm(it.nummer).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 50 }); });
   if (nq.length >= 2) items.forEach((it, i) => { if (onDay(it) && Matcher.norm(it.bez).includes(nq) && !hits.some((h) => h.i === i)) hits.push({ i, score: 45 }); });
-  if (hits.length) { pauseLoop(); showResult(hits, null); $('#manualIn').blur(); }
-  else setStatus('„' + q + '“ steht nicht in der Liste vom ' + fmtLong(activeDate) + '.');
+  if (hits.length) { pauseLoop(); showResult(hits, null); $('#manualIn').blur(); return; }
+  // andere Tage
+  const od = otherDayFind(q, [], true);
+  if (od) { pauseLoop(); showOtherDay(od, null); $('#manualIn').blur(); }
+  else setStatus('„' + q + '“ steht in keiner Liste.');
 };
 
 // ---------- Treffer ----------
@@ -828,29 +883,36 @@ function renderResult() {
   const alts = current.hits.filter((h) => h.id !== current.sel).map((h) => idxOf(h.id)).filter((j) => j >= 0).slice(0, 4);
   const top = p ? Object.entries(p.kunden || {}).sort((a, b) => b[1] - a[1])[0] : null;
   const learnTxt = [marke, p && p.count ? `schon ${p.count}× gescannt` : 'zum ersten Mal gescannt', top && top[1] > 1 ? `meist für ${top[0]}` : ''].filter(Boolean).join(' · ');
+  const q = it.qty || 1; const isDa = (it.da || 0) >= q; const other = it.datum !== activeDate;
   r.className = done ? 'done' : '';
   r.innerHTML = `
     <img class="thumb" data-ph="${esc(k)}" hidden alt="">
+    ${other ? `<div class="flag other" style="margin:0 0 8px">📅 Bestellt am ${fmtLong(it.datum)} (anderer Tag)</div>` : ''}
     <div class="lbl">Kunde / Liste</div>
     <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
-    <div class="meta muted">Menge: ${it.done || 0} von ${it.qty || 1} · bestellt ${fmtDate(it.datum)}</div>
+    <div class="meta muted">${q > 1 ? `Menge ${q} · 📦 ${Math.min(it.da || 0, q)} da · ✓ ${it.done || 0} abgegeben · ` : ''}bestellt ${fmtDate(it.datum)}</div>
+    ${!done && isDa ? `<div class="flag" style="background:var(--warn)">📦 Ist da – bereitgelegt${it.daBy ? ' von ' + esc(it.daBy) + ' um ' + hhmm(it.daAt) : ''}</div>` : ''}
     <div class="learn">${esc(learnTxt)}</div>
     ${(() => { const h = current.hits.find((x) => x.id === current.sel); return h && !h.exact && h.score < 80 && current.ctx ? '<div class="flag check">Bitte prüfen – nicht ganz sicher erkannt</div> ' : ''; })()}
-    ${done ? `<div class="flag">Schon abgehakt${it.by ? ' von ' + esc(it.by) + ' um ' + hhmm(it.at) : ''}</div>` : ''}
+    ${done ? `<div class="flag" style="background:var(--ok);color:#04210f">✓ Schon abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}</div>` : ''}
     ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder meintest du:</div><div class="alts">${alts.map((j) => `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${esc(items[j].nummer)}</button>`).join('')}</div>` : ''}
     <div class="row actions" style="clear:both">
-      <button class="btn ok" id="rDone">✓ Abhaken</button>
+      ${done ? '' : isDa ? '' : '<button class="btn da" id="rDa">📦 Ist da</button>'}
+      ${done ? '' : '<button class="btn ok" id="rDone">✓ Abgegeben</button>'}
       <button class="btn" id="rNext">Weiter</button>
     </div>`;
   r.hidden = false; fillThumbs(r);
   r.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => { current.sel = b.dataset.alt; renderResult(); });
-  $('#rDone').onclick = () => {
+  const act = (kind) => {
     const j = idxOf(current.sel); if (j < 0) return nextScan();
     const x = items[j]; const hit = current.hits.find((h) => h.id === current.sel);
-    learn(x, current.ctx ? { ...current.ctx, hit } : null);
-    setCheck(x, Math.min((x.done || 0) + 1, x.qty || 1)); nextScan();
+    if (!current.learned) { learn(x, current.ctx ? { ...current.ctx, hit } : null); current.learned = true; }
+    if (kind === 'da') setDa(x, Math.min((x.da || 0) + 1, x.qty || 1)); else setCheck(x, Math.min((x.done || 0) + 1, x.qty || 1));
+    nextScan();
   };
+  if ($('#rDone')) $('#rDone').onclick = () => act('ab');
+  if ($('#rDa')) $('#rDa').onclick = () => act('da');
   $('#rNext').onclick = nextScan;
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1011,14 +1073,27 @@ function feedback() {
 function setStatus(t) { $('#status').textContent = t; }
 
 // ---------- Kunden ----------
-let onlyOpen = false;
-$('#toggleOpen').onclick = () => { onlyOpen = !onlyOpen; $('#toggleOpen').textContent = onlyOpen ? 'Alle zeigen' : 'Nur offene'; renderKunden(); };
+let onlyOpen = store.get('onlyOpen', false);
+// Filter-Knopf: Auswahl nach Liste (Alle / Abdul / Cyhat …) und offen/alle
+function filterLabel() { const o = ownerFilter === 'Alle' ? 'Alle' : ownerFilter; return `${o}${onlyOpen ? ' · offen' : ''} ▾`; }
+$('#toggleOpen').onclick = async () => {
+  const owners = Object.keys(lists).sort(); const mark = (on) => (on ? '● ' : '○ ');
+  const v = await choiceDlg('Was soll angezeigt werden?', [
+    { label: mark(ownerFilter === 'Alle') + 'Alle anzeigen (alle Listen)', value: 'o:Alle', cls: ownerFilter === 'Alle' ? 'primary' : '' },
+    ...owners.map((o) => ({ label: mark(ownerFilter === o) + 'Nur ' + o, value: 'o:' + o, cls: ownerFilter === o ? 'primary' : '' })),
+    { label: (onlyOpen ? '☑' : '☐') + ' Nur noch nicht abgegebene Teile', value: 's:toggle' },
+    { label: 'Schließen', value: '' },
+  ]);
+  if (!v) return;
+  if (v.startsWith('o:')) { ownerFilter = v.slice(2); store.set('ownerFilter', ownerFilter); }
+  else if (v === 's:toggle') { onlyOpen = !onlyOpen; store.set('onlyOpen', onlyOpen); }
+  renderAll();
+};
 $('#filter').oninput = renderKunden;
 function renderOwners() {
   const owners = Object.keys(lists).sort();
   if (ownerFilter !== 'Alle' && !owners.includes(ownerFilter)) ownerFilter = 'Alle';
-  $('#owners').innerHTML = owners.length > 1 ? ['Alle', ...owners].map((o) => `<button class="chip ${o === ownerFilter ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('') : '';
-  $('#owners').querySelectorAll('.chip').forEach((b) => b.onclick = () => { ownerFilter = b.dataset.o; store.set('ownerFilter', ownerFilter); renderAll(); });
+  $('#owners').innerHTML = ''; $('#toggleOpen').textContent = filterLabel();
 }
 // ---------- Übergabe (alles erhalten + optionales Foto) ----------
 function fnv(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
@@ -1136,32 +1211,39 @@ function renderKunden() {
     const k = it.owner + '|' + (it.kunde || '(ohne Kunde)'); if (!groups.has(k)) groups.set(k, { kunde: it.kunde || '(ohne Kunde)', owner: it.owner, ix: [] }); groups.get(k).ix.push(i);
   });
   const multi = Object.keys(lists).length > 1;
-  const arr = [...groups.values()].map((g) => ({ ...g, done: g.ix.filter(isDone).length }))
+  const arr = [...groups.values()].map((g) => ({ ...g, done: g.ix.filter(isDone).length, ready: g.ix.filter((i) => !isDone(i) && (items[i].da || 0) >= (items[i].qty || 1)).length }))
     .filter((g) => !onlyOpen || g.done < g.ix.length)
     .sort((a, b) => (a.done === a.ix.length) - (b.done === b.ix.length) || a.kunde.localeCompare(b.kunde, 'de') || a.owner.localeCompare(b.owner));
   $('#kundenList').innerHTML = arr.length ? arr.map((g) => `
     <div class="kgroup">
-      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span><span class="kname" data-ck="${esc(g.owner + '|' + g.kunde)}">${esc(g.kunde)}</span>${multi ? `<span class="tag">${esc(g.owner)}</span>` : ''}</span><span class="r">${hasPlace(g.owner + '|' + g.kunde) ? `<button class="mapbtn" data-route="${esc(g.owner + '|' + g.kunde)}" aria-label="Route">📍</button>` : ''}<span class="cnt">${g.done} / ${g.ix.length}${g.done === g.ix.length ? ' ✓' : ''}</span>${(() => { const hk = hoKey(g.owner, g.kunde, activeDate); const hp = checks[hk] && checks[hk].photo; return (hp || g.done === g.ix.length) ? `<button class="hobtn ${hp ? 'has' : ''}" data-ho="${esc(hk)}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Übergabe-Foto">📷${hp ? '' : '+'}</button>` : ''; })()}${g.done < g.ix.length ? `<button class="allbtn" data-all="${esc(g.ix.map((i) => items[i].id).join('\n'))}" data-k="${esc(g.kunde)}" data-hk="${esc(hoKey(g.owner, g.kunde, activeDate))}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Alles erhalten">✓</button>` : ''}</span></div>
-      <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i></div>
-      ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const part = !d && (it.done || 0) > 0; const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const mk = brandOf(it);
-        return `<div class="item ${d ? 'done' : ''} ${part ? 'part' : ''}" data-id="${esc(it.id)}"><div class="chk">${d ? '✓' : part ? (it.done + '/' + it.qty) : ''}</div>
-          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ ${esc(it.by)} · ${hhmm(it.at)}</div>` : ''}</div>
+      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span><span class="kname" data-ck="${esc(g.owner + '|' + g.kunde)}">${esc(g.kunde)}</span>${multi ? `<span class="tag">${esc(g.owner)}</span>` : ''}</span><span class="r">${hasPlace(g.owner + '|' + g.kunde) ? `<button class="mapbtn" data-route="${esc(g.owner + '|' + g.kunde)}" aria-label="Route">📍</button>` : ''}<span class="cnt">${g.ready ? `📦${g.ready} · ` : ''}✓${g.done} / ${g.ix.length}</span>${(() => { const hk = hoKey(g.owner, g.kunde, activeDate); const hp = checks[hk] && checks[hk].photo; return (hp || g.done === g.ix.length) ? `<button class="hobtn ${hp ? 'has' : ''}" data-ho="${esc(hk)}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Übergabe-Foto">📷${hp ? '' : '+'}</button>` : ''; })()}${g.done < g.ix.length ? `<button class="allbtn" data-all="${esc(g.ix.map((i) => items[i].id).join('\n'))}" data-k="${esc(g.kunde)}" data-hk="${esc(hoKey(g.owner, g.kunde, activeDate))}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Alles erhalten">✓</button>` : ''}</span></div>
+      <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i><i class="da" style="width:${(100 * g.ready / g.ix.length).toFixed(0)}%"></i></div>
+      ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const q = it.qty || 1; const ready = !d && (it.da || 0) >= q; const part = !d && !ready && ((it.done || 0) > 0 || (it.da || 0) > 0); const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const mk = brandOf(it);
+        return `<div class="item ${d ? 'done' : ''} ${ready ? 'ready' : ''} ${part ? 'part' : ''}" data-id="${esc(it.id)}"><div class="chk">${d ? '✓' : ready ? '📦' : part ? ((it.done || 0) + '/' + q) : ''}</div>
+          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ abgegeben · ${esc(it.by)} · ${hhmm(it.at)}</div>` : ''}${!d && (it.da || 0) > 0 && it.daBy ? `<div class="who da">📦 ${q > 1 ? (it.da + '/' + q + ' ') : ''}da · ${esc(it.daBy)} · ${hhmm(it.daAt)}</div>` : ''}</div>
           ${p && p.photo ? `<img class="th" data-ph="${esc(k)}" hidden alt="">` : ''}</div>`; }).join('')}
     </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${!items.length ? 'Noch keine Liste im Pool.' : q ? 'Nichts gefunden.' : 'Keine Bestellungen an diesem Tag.'}</div>`;
   $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = async () => {
-    const it = items[idxOf(el.dataset.id)]; if (!it) return; const qn = it.qty || 1;
-    const next = (it.done || 0) >= qn ? 0 : (it.done || 0) + 1;
-    if (next === 0 && !(await confirmDlg(`Haken bei ${it.nummer} (${it.kunde}) entfernen?${it.by ? ' Abgehakt von ' + it.by + ' um ' + hhmm(it.at) + '.' : ''}`))) return;
-    setCheck(it, next);
+    const it = items[idxOf(el.dataset.id)]; if (!it) return; const q = it.qty || 1;
+    const opts = [];
+    if ((it.da || 0) < q && (it.done || 0) < q) opts.push({ label: q > 1 ? `📦 Ist da (${(it.da || 0) + 1} von ${q})` : '📦 Ist da', value: 'da', cls: 'da' });
+    if ((it.done || 0) < q) opts.push({ label: q > 1 ? `✓ Abgegeben (${(it.done || 0) + 1} von ${q})` : '✓ Abgegeben', value: 'ab', cls: 'ok' });
+    if ((it.da || 0) > 0 || (it.done || 0) > 0) opts.push({ label: '↺ Zurücksetzen (wieder offen)', value: 'reset' });
+    opts.push({ label: 'Abbrechen', value: '' });
+    const status = (it.done || 0) >= q ? `✓ abgegeben von ${it.by} um ${hhmm(it.at)}` : (it.da || 0) > 0 ? `📦 da (${it.daBy}, ${hhmm(it.daAt)})` : 'noch offen';
+    const v = await choiceDlg(`${it.nummer} · ${it.kunde} – ${status}`, opts);
+    if (v === 'da') setDa(it, Math.min((it.da || 0) + 1, q));
+    else if (v === 'ab') setCheck(it, Math.min((it.done || 0) + 1, q));
+    else if (v === 'reset' && (await confirmDlg(`${it.nummer} (${it.kunde}) wirklich wieder auf offen setzen?`))) resetCheck(it);
   });
   $('#kundenList').querySelectorAll('.allbtn').forEach((b) => b.onclick = async (e) => {
     e.stopPropagation();
     const ids = b.dataset.all.split('\n'); const open = ids.map(idxOf).filter((i) => i >= 0 && !isDone(i));
     if (!open.length) return;
-    const choice = await choiceDlg(`${b.dataset.k} hat alles erhalten? Die ${open.length} offenen ${open.length === 1 ? 'Teil wird' : 'Teile werden'} abgehakt.`,
+    const choice = await choiceDlg(`${b.dataset.k} hat alles erhalten? Die ${open.length} offenen ${open.length === 1 ? 'Teil wird' : 'Teile werden'} als abgegeben markiert.`,
       [{ label: '📷 Mit Foto', value: 'foto', cls: 'primary' }, { label: '✓ Ohne Foto', value: 'ok', cls: 'ok' }, { label: 'Abbrechen', value: '' }]);
     if (!choice) return;
-    const at = nowIso(); for (const i of open) checks[items[i].id] = { n: items[i].qty || 1, by: cfg.name, at };
+    const at = nowIso(); for (const i of open) { const c = checks[items[i].id] || {}; const q = items[i].qty || 1; checks[items[i].id] = { ...c, n: q, by: cfg.name, at, da: q, daBy: c.daBy || cfg.name, daAt: c.daAt || at }; }
     dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
     if (choice === 'foto') takeHandoverPhoto(b.dataset.hk, b.dataset.t);
   });
@@ -1177,12 +1259,12 @@ function renderKunden() {
 // ---------- Offene Teile als Nachricht ----------
 function openText() {
   const open = items.filter((it) => onDay(it) && inFilter(it) && (it.done || 0) < (it.qty || 1));
-  if (!open.length) return `Bestellungen vom ${fmtLong(activeDate)}: alles erledigt ✅`;
+  if (!open.length) return `Bestellungen vom ${fmtLong(activeDate)}: alles abgegeben ✅`;
   const g = new Map();
   for (const it of open) { const k = it.kunde + (Object.keys(lists).length > 1 ? ' / ' + it.owner : ''); if (!g.has(k)) g.set(k, []); g.get(k).push(it); }
-  let t = `Noch offen (${fmtLong(activeDate)}${ownerFilter !== 'Alle' ? ', ' + ownerFilter : ''}): ${open.length} ${open.length === 1 ? 'Teil' : 'Teile'}\n`;
+  let t = `Noch nicht abgegeben (${fmtLong(activeDate)}${ownerFilter !== 'Alle' ? ', ' + ownerFilter : ''}): ${open.length} ${open.length === 1 ? 'Teil' : 'Teile'}\n`;
   for (const [k, arr] of [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de'))) {
-    t += `\n${k}:\n` + arr.map((it) => { const rest = (it.qty || 1) - (it.done || 0); return `- ${it.nummer}${it.bez ? ' (' + it.bez + ')' : ''}${(it.qty || 1) > 1 ? ' – noch ' + rest + ' von ' + it.qty : ''}`; }).join('\n') + '\n';
+    t += `\n${k}:\n` + arr.map((it) => { const q = it.qty || 1; const rest = q - (it.done || 0); const ready = (it.da || 0) >= q; return `- ${it.nummer}${it.bez ? ' (' + it.bez + ')' : ''}${q > 1 ? ' – noch ' + rest + ' von ' + q : ''} – ${ready ? '📦 liegt bereit' : (it.da || 0) > 0 ? '📦 ' + it.da + ' von ' + q + ' da' : '❗ fehlt noch'}`; }).join('\n') + '\n';
   }
   return t.trim();
 }
@@ -1217,13 +1299,14 @@ function renderAll() {
   const day = items.filter((it) => onDay(it) && inFilter(it)); const done = day.filter((it) => (it.done || 0) >= (it.qty || 1)).length;
   const all = items.filter(onDay); const allDone = all.filter((it) => (it.done || 0) >= (it.qty || 1)).length;
   const kd = new Set(day.map((i) => i.owner + i.kunde)).size;
-  $('#progress').textContent = day.length ? `${done} / ${day.length} erledigt` : '';
+  const ready = day.filter((it) => (it.done || 0) < (it.qty || 1) && (it.da || 0) >= (it.qty || 1)).length;
+  $('#progress').textContent = day.length ? `📦${ready} · ✓${done} / ${day.length}` : '';
   const [y, m, d] = activeDate.split('-').map(Number);
   $('#dText').textContent = `${WT[new Date(y, m - 1, d).getDay()]}, ${fmtLong(activeDate)}`;
-  $('#dSub').textContent = day.length ? `${day.length} ${day.length === 1 ? 'Teil' : 'Teile'} · ${kd} ${kd === 1 ? 'Kunde' : 'Kunden'} · ${done} erledigt` : 'keine Bestellungen';
+  $('#dSub').textContent = day.length ? `${day.length} ${day.length === 1 ? 'Teil' : 'Teile'} · ${kd} ${kd === 1 ? 'Kunde' : 'Kunden'} · 📦 ${ready} da · ✓ ${done} abgegeben` : 'keine Bestellungen';
   $('#dPick').value = activeDate; $('#dPick').max = maxDay();
   $('#dNext').disabled = activeDate >= maxDay();
-  $('#scanDay').innerHTML = items.length ? `Scanne alle Listen vom <b>${fmtLong(activeDate)}</b> · ${allDone}/${all.length} erledigt · <u>Tag ändern</u>` : '';
+  $('#scanDay').innerHTML = items.length ? `Scanne alle Listen vom <b>${fmtLong(activeDate)}</b> · ✓ ${allDone}/${all.length} abgegeben · <u>Tag ändern</u>` : '';
   renderStand(); renderLists(); renderKunden(); renderRetList(); setDot();
 }
 function renderStand() {
