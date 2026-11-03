@@ -448,6 +448,10 @@ const inFilter = (it) => ownerFilter === 'Alle' || it.owner === ownerFilter;
 let index = [];
 
 const START_DEFAULT = self.__TS_START_DEFAULT || '2026-11-01'; // (Test-Hook)
+// Reiter/Namen in einer Liste, die keine Kunden sind (z. B. Händler) – werden überall ignoriert
+const IGNORE_DEFAULT = { Abdul: ['Ciyhan', 'IC', 'AP', 'GG', 'EK'] };
+const ignoreMap = () => (checks['CFG|ignore'] && checks['CFG|ignore'].map) || IGNORE_DEFAULT;
+const ignored = (owner, kunde) => (ignoreMap()[owner] || []).some((n) => kNorm(n) === kNorm(kunde));
 const appStart = () => (checks['CFG|start'] && checks['CFG|start'].start) || START_DEFAULT;
 function rebuildItems() {
   const start = appStart();
@@ -455,6 +459,7 @@ function rebuildItems() {
   for (const owner of Object.keys(lists).sort()) {
     const seen = {};
     for (const x of lists[owner].items || []) {
+      if (ignored(owner, x.kunde)) continue;
       const base = owner + '|' + x.kunde + '|' + x.datum + '|' + Matcher.norm(x.nummer);
       seen[base] = (seen[base] || 0) + 1;
       const id = base + '|' + seen[base];
@@ -594,7 +599,7 @@ function sync() {
           const owner = decodeURIComponent(m[1]); names[owner] = 1;
           if (!lists[owner] || lists[owner].sha !== f.sha) {
             const r = await Sync.readFile(conn, 'lists/' + f.name);
-            if (r && r.data) { lists[owner] = { items: r.data.items || [], at: r.data.at, by: r.data.by, sha: r.sha }; changed = true; }
+            if (r && r.data) { lists[owner] = { items: r.data.items || [], at: r.data.at, by: r.data.by, src: r.data.src, sha: r.sha }; changed = true; }
           }
         }
         for (const o of Object.keys(lists)) if (!names[o]) { delete lists[o]; changed = true; }
@@ -634,7 +639,7 @@ function setDa(it, da) {
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
 }
 function resetCheck(it) { checks[it.id] = { n: 0, by: cfg.name, at: nowIso(), da: 0, daBy: cfg.name, daAt: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(); }
-const OFFEN_TAGE = 14;  // Bestellungen anderer Tage gelten nur so lange als "offen"
+const OFFEN_TAGE = 28;  // Bestellungen anderer Tage (letzte 4 Wochen, wie Retoure-Frist) gelten als "offen"
 // Teil nicht am angezeigten Tag: in anderen Tagen suchen (offen & jung zuerst, sonst neueste)
 function otherDayFind(text, codes, loose) {
   let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && (loose || x.score >= 110)) : [];
@@ -931,6 +936,8 @@ async function loop() {
         const top = hits[0];
         if (top.exact || top.score >= 100 || lastHit === top.i) {
           const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8;
+          // gleiche Nummer auch an anderen Tagen der letzten 4 Wochen noch offen? -> als Auswahl dazu
+          if (hits.some((h) => h.exact)) { const od = otherDayFind(text, codes); if (od && od.open.length) hits = hits.concat(od.open.filter((o) => !hits.some((h) => h.i === o.i)).map((o) => ({ ...o, score: 1 }))); }
           showResult(hits, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break;
         }
         lastHit = top.i; setStatus('Fast… bitte ruhig halten');
@@ -1008,6 +1015,9 @@ $('#manual').onsubmit = (e) => {
 let current = null;
 function isDone(i) { return (items[i].done || 0) >= (items[i].qty || 1); }
 function showResult(hits, ctx) {
+  // Ist die Nummer genau erkannt, keine "ähnlichen" Nummern anderer Kunden/Listen dazumischen
+  if (hits.some((h) => h.exact)) hits = hits.filter((h) => h.exact);
+  hits = hits.slice().sort((a, b) => b.score - a.score);
   const best = hits[0].score;
   const sorted = hits.slice().sort((a, b) => (b.score >= best - 5) - (a.score >= best - 5) || (isDone(a.i) - isDone(b.i)) || b.score - a.score);
   const uniq = []; for (const h of sorted) if (!uniq.some((u) => u.i === h.i)) uniq.push(h);
@@ -1036,7 +1046,7 @@ function renderResult() {
     <div class="learn">${esc(learnTxt)}</div>
     ${(() => { const h = current.hits.find((x) => x.id === current.sel); return h && !h.exact && h.score < 80 && current.ctx ? '<div class="flag check">Bitte prüfen – nicht ganz sicher erkannt</div> ' : ''; })()}
     ${done ? `<div class="flag" style="background:var(--ok);color:#04210f">✓ Schon abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}</div>` : ''}
-    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder meintest du:</div><div class="alts">${alts.map((j) => `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${esc(items[j].nummer)}</button>`).join('')}</div>` : ''}
+    ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder meintest du:</div><div class="alts">${alts.map((j) => `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${esc(items[j].nummer)}${items[j].datum !== activeDate ? ' · ' + fmtDate(items[j].datum) : ''}</button>`).join('')}</div>` : ''}
     <div class="row actions" style="clear:both">
       ${done ? '' : isDa ? '' : '<button class="btn da" id="rDa">📦 Ist da</button>'}
       ${done ? '' : '<button class="btn ok" id="rDone">✓ Abgegeben</button>'}
@@ -1575,6 +1585,7 @@ async function renameOwner(old, neu) {
     lists[neu] = { ...l, by: data.by, sha: res.sha };
   }
   await Sync.deleteFile(conn, 'lists/' + encodeURIComponent(old) + '.enc', l.sha);
+  { const im = ignoreMap(); if (im[old]) { const map = { ...im, [neu]: [...new Set([...(im[neu] || []), ...im[old]])] }; delete map[old]; checks['CFG|ignore'] = { map, by: cfg.name, at: nowIso() }; } }
   delete lists[old];
   // 2) Haken, Übergabe-Fotos, Personennamen
   const sw = (v) => (v === old ? neu : v);
@@ -1604,10 +1615,18 @@ async function renameOwner(old, neu) {
 
 function renderLists() {
   const owners = Object.keys(lists).sort();
-  $('#listsBox').innerHTML = owners.length ? owners.map((o) => { const l = lists[o]; const n = (l.items || []).length; const k = new Set((l.items || []).map((x) => x.kunde)).size;
-    return `<div class="lrow"><div><b style="color:var(--text)">${esc(o)}</b><div style="font-size:13px">${n} Positionen · ${k} Kunden${l.at ? '<br>hochgeladen ' + dayTime(l.at) + (l.by ? ' von ' + esc(l.by) : '') : ''}</div></div><div style="display:flex;flex-direction:column;gap:6px"><button class="btn small ghost" data-ren="${esc(o)}">Umbenennen</button><button class="btn small ghost" data-del="${esc(o)}">Entfernen</button></div></div>
-      <div class="row" data-renbox="${esc(o)}" hidden style="margin:-4px 0 10px"><input type="text" value="${esc(o)}" style="flex:2"><button class="btn small primary" style="flex:1" data-rengo="${esc(o)}">Speichern</button></div>`; }).join('') : 'Noch keine Liste hochgeladen.';
+  const dup = Object.entries(crossDupes());
+  $('#listsBox').innerHTML = (dup.length ? `<div class="flag check" style="margin:0 0 10px;text-align:left">⚠ ${dup.map(([k, n]) => `${n} Teile stehen gleichzeitig in ${esc(k.replace(' + ', ' und '))}`).join(', ')} – gleicher Kunde, gleiche Nummer, gleicher Tag. Wahrscheinlich wurde eine Datei unter dem falschen Namen hochgeladen. Lösung: jede Datei einmal neu unter dem richtigen Namen hochladen (Excel = Abdul, ODS = Cihat). Das ersetzt die alte Liste komplett.</div>` : '') + (owners.length ? owners.map((o) => { const l = lists[o]; const n = (l.items || []).length; const k = new Set((l.items || []).map((x) => x.kunde)).size;
+    return `<div class="lrow"><div><b style="color:var(--text)">${esc(o)}</b><div style="font-size:13px">${n} Positionen · ${k} Kunden${l.at ? '<br>hochgeladen ' + dayTime(l.at) + (l.by ? ' von ' + esc(l.by) : '') : ''}${l.src && l.src.file ? '<br>Datei: ' + esc(l.src.file) : ''}<br><span data-ign="${esc(o)}" style="text-decoration:underline dotted;cursor:pointer">🚫 Keine Kunden (ignoriert): ${(ignoreMap()[o] || []).length ? esc((ignoreMap()[o]).join(', ')) : '–'}</span></div></div><div style="display:flex;flex-direction:column;gap:6px"><button class="btn small ghost" data-ren="${esc(o)}">Umbenennen</button><button class="btn small ghost" data-del="${esc(o)}">Entfernen</button></div></div>
+      <div data-ignbox="${esc(o)}" hidden style="margin:-4px 0 10px"><div class="muted" style="font-size:13px;margin-bottom:4px">Reiter/Namen, die keine Kunden sind (z. B. Händler), mit Komma getrennt:</div><div class="row"><input type="text" value="${esc((ignoreMap()[o] || []).join(', '))}" style="flex:2"><button class="btn small primary" style="flex:1" data-igngo="${esc(o)}">Speichern</button></div></div>
+      <div class="row" data-renbox="${esc(o)}" hidden style="margin:-4px 0 10px"><input type="text" value="${esc(o)}" style="flex:2"><button class="btn small primary" style="flex:1" data-rengo="${esc(o)}">Speichern</button></div>`; }).join('') : 'Noch keine Liste hochgeladen.');
   $('#listsBox').querySelectorAll('[data-ren]').forEach((b) => b.onclick = () => { const box = $('#listsBox').querySelector(`[data-renbox="${CSS.escape(b.dataset.ren)}"]`); box.hidden = !box.hidden; if (!box.hidden) box.querySelector('input').focus(); });
+  $('#listsBox').querySelectorAll('[data-ign]').forEach((b) => b.onclick = () => { const box = $('#listsBox').querySelector(`[data-ignbox="${CSS.escape(b.dataset.ign)}"]`); box.hidden = !box.hidden; });
+  $('#listsBox').querySelectorAll('[data-igngo]').forEach((b) => b.onclick = () => {
+    const o = b.dataset.igngo; const names = b.parentElement.querySelector('input').value.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+    const map = { ...ignoreMap(), [o]: [...new Set(names)] };
+    checks['CFG|ignore'] = { map, by: cfg.name, at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(300);
+  });
   $('#listsBox').querySelectorAll('[data-rengo]').forEach((b) => b.onclick = async () => {
     const old = b.dataset.rengo; const neu = b.parentElement.querySelector('input').value.trim().replace(/[\/\\|]/g, ' ');
     if (!neu || neu === old) return;
@@ -1774,7 +1793,22 @@ function isoToday(off = 0) { const d = new Date(); d.setDate(d.getDate() + off);
 const isPrice = (v) => /€|EUR/i.test(v) || /^-?\d{1,6}[.,]\d{2}$/.test(v);
 
 const HEAD = { nr: /art(ikel)?\.?\s*-?\s*n(umme)?r|^nr\.?$|^nummer|teile.?n|^no\.?$/i, kunde: /kunde|empf|^name$|auftragg/i, bez: /bezeich|beschreib|artikel$|^teil$|produkt/i, datum: /datum|^date$|^tag$/i };
+// Mehrere Reiter: jeden Reiter einzeln prüfen und per Mehrheit (nach Zeilen) entscheiden,
+// damit ein abweichender Reiter (z. B. Übersicht ohne Datum) nicht die ganze Datei verdirbt.
 function detectColumns(rows, multi) {
+  if (!multi) return detectOne(rows, false);
+  rows = rows.filter((r) => r.filter((c) => c).length >= 1);
+  const by = new Map(); for (const r of rows) { if (!by.has(r._sheet)) by.set(r._sheet, []); by.get(r._sheet).push(r); }
+  const votes = { nr: {}, bez: {}, datum: {} };
+  for (const rs of by.values()) { const d = detectOne(rs, true); for (const k of Object.keys(votes)) votes[k][d.map[k]] = (votes[k][d.map[k]] || 0) + rs.length; }
+  const win = (k) => +Object.entries(votes[k]).sort((a, b) => b[1] - a[1])[0][0];
+  const map = { nr: win('nr'), kunde: SHEET, bez: win('bez'), datum: win('datum') };
+  // Datum: lieber eine Datumsspalte nehmen, wenn es sie in einem guten Teil der Zeilen gibt
+  if (map.datum < 0) { const alt = Object.entries(votes.datum).filter(([c]) => +c >= 0).sort((a, b) => b[1] - a[1])[0]; if (alt && alt[1] >= 0.3 * rows.length) map.datum = +alt[0]; }
+  if (map.bez === map.nr) map.bez = -1;
+  return { rows, header: null, nc: Math.max(0, ...rows.map((r) => r.length)), map };
+}
+function detectOne(rows, multi) {
   rows = rows.filter((r) => r.filter((c) => c).length >= 1);
   let header = null;
   if (!multi && rows.length && rows[0].some((c) => HEAD.nr.test(c) || HEAD.kunde.test(c))) header = rows.shift();
@@ -1800,6 +1834,24 @@ function detectColumns(rows, multi) {
   return { rows, header, nc, map };
 }
 
+// Welche vorhandene Liste hat die gleichen Kunden wie die neue Datei?
+const kNorm = (k) => String(k || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+function kundenOverlap(newItems) {
+  const nk = new Set(newItems.map((x) => kNorm(x.kunde)).filter(Boolean)); const res = {};
+  for (const o of Object.keys(lists)) { const ok = new Set((lists[o].items || []).map((x) => kNorm(x.kunde))); const same = [...nk].filter((k) => ok.has(k)); res[o] = { n: same.length, share: nk.size ? same.length / nk.size : 0, names: newItems.map((x) => x.kunde).filter((k, i, a) => ok.has(kNorm(k)) && a.indexOf(k) === i) }; }
+  return res;
+}
+function ownerByKunden(newItems) {
+  const ov = kundenOverlap(newItems); const best = Object.entries(ov).sort((a, b) => b[1].n - a[1].n)[0];
+  return best && best[1].n ? { owner: best[0], ...best[1] } : null;
+}
+// Gleiche Teile (Kunde + Nummer + Datum) in zwei verschiedenen Listen?
+function crossDupes() {
+  const seen = new Map(); const out = {};
+  for (const it of items) { const k = kNorm(it.kunde) + '|' + Matcher.norm(it.nummer) + '|' + it.datum; const o = seen.get(k);
+    if (o === undefined) seen.set(k, it.owner); else if (o !== it.owner) { const pk = [o, it.owner].sort().join(' + '); out[pk] = (out[pk] || 0) + 1; } }
+  return out;
+}
 function startMapping(sheets, fileName) {
   $('#listMsg').textContent = '';
   const used = sheets.filter((s) => s.rows.some((r) => r.filter(Boolean).length >= 2));
@@ -1824,10 +1876,13 @@ function startMapping(sheets, fileName) {
     s.value = String(parsed.map[key]);
     s.onchange = () => { parsed.map[key] = +s.value; if (key === 'datum') { computeDates(); parsed.sel = new Set(parsed.dates.slice(0, 1)); } preview(); };
   }
+  parsed.file = fileName || ''; parsed.ext = ((fileName || '').match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
   const guess = (fileName || '').replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').trim();
   const g2 = Object.entries(renameMap()).find(([o]) => o.toLowerCase() === guess.toLowerCase()); const guess2 = g2 ? g2[1] : guess;
   const known = Object.keys(lists).find((o) => o.toLowerCase() === guess2.toLowerCase());
-  $('#ownerIn').value = known || (guess2 ? guess2.charAt(0).toUpperCase() + guess2.slice(1) : '');
+  const byKunden = ownerByKunden(mappedItems());
+  const byExt = parsed.ext ? Object.keys(lists).filter((o) => lists[o].src && lists[o].src.ext === parsed.ext) : [];
+  $('#ownerIn').value = known || (byKunden && byKunden.share >= 0.4 ? byKunden.owner : byExt.length === 1 ? byExt[0] : (guess2 && !/^(tabelle|liste|bestell|mappe|book|neu)/i.test(guess2) ? guess2.charAt(0).toUpperCase() + guess2.slice(1) : ''));
   $('#ownerList').innerHTML = Object.keys(lists).map((o) => `<option value="${esc(o)}">`).join('');
   updUploadBtn();
   preview(); card.scrollIntoView({ behavior: 'smooth' });
@@ -1864,7 +1919,10 @@ function preview() {
     });
   }
   const m = mappedItems(); const kunden = new Set(m.map((x) => x.kunde)).size;
-  $('#mapPrev').innerHTML = `<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen${parsed.multi ? ' von ' + kunden + ' Kunden' : ''} werden übernommen. Vorschau:</div>
+  const noDate = parsed.map.datum < 0 && m.length > 30;
+  const skip = {}; if (parsed.map.datum >= 0) for (const r of parsed.rows) if (!r._date && validNr(r[parsed.map.nr])) skip[r._sheet || '–'] = (skip[r._sheet || '–'] || 0) + 1;
+  const skipTxt = Object.entries(skip).map(([k, n]) => `${esc(k)} (${n})`).join(', ');
+  $('#mapPrev').innerHTML = (noDate ? `<div class="flag check" style="margin-top:10px;text-align:left">⚠ Keine Datums-Spalte erkannt – dann bekämen alle ${m.length} Teile das heutige Datum. Bitte oben bei „Datum“ die richtige Spalte wählen.</div>` : '') + `${skipTxt ? `<div class="muted" style="margin-top:10px;font-size:13px">Ohne Datum, daher übersprungen: ${skipTxt}</div>` : ''}<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen${parsed.multi ? ' von ' + kunden + ' Kunden' : ''} werden übernommen. Vorschau:</div>
     <table class="prev"><tr><th>Nummer</th><th>Kunde</th>${parsed.map.datum >= 0 ? '<th>Datum</th>' : '<th>Menge</th>'}</tr>${m.slice(0, 8).map((x) => `<tr><td>${esc(x.nummer)}</td><td>${esc(x.kunde)}</td><td>${parsed.map.datum >= 0 ? (x.datum ? fmtDate(x.datum) : '') : x.qty}</td></tr>`).join('')}</table>`;
 }
 
@@ -1878,12 +1936,27 @@ $('#mapUpload').onclick = async () => {
   if (!owner) { msg.innerHTML = '<span class="err-msg">Bitte eintragen, wessen Liste das ist (z. B. Abdul).</span>'; return; }
   const its = mappedItems().map((x) => ({ nummer: x.nummer, bez: x.bez, kunde: x.kunde, qty: x.qty, datum: x.datum }));
   if (!its.length) { msg.innerHTML = '<span class="err-msg">Keine Positionen zum Hochladen.</span>'; return; }
+  // Schutz: Datei gehört wahrscheinlich zu einer anderen Liste?
+  { const ov = kundenOverlap(its); const mine = (ov[owner] || { n: 0 }).n;
+    const other = Object.entries(ov).filter(([o, v]) => o !== owner && v.n >= 2 && v.share >= 0.3 && v.n > mine).sort((a, b) => b[1].n - a[1].n)[0];
+    const extOther = parsed.ext && Object.keys(lists).find((o) => o !== owner && lists[o].src && lists[o].src.ext === parsed.ext && !(lists[owner] && lists[owner].src && lists[owner].src.ext === parsed.ext));
+    const extMine = parsed.ext && lists[owner] && lists[owner].src && lists[owner].src.ext && lists[owner].src.ext !== parsed.ext;
+    const sug = other ? other[0] : extOther || null;
+    if (sug || extMine) {
+      const why = other ? `Diese Datei hat die gleichen Kunden wie die Liste „${sug}“ (${other[1].names.slice(0, 3).join(', ')}${other[1].n > 3 ? ' …' : ''}).`
+        : extOther ? `„${sug}“ lädt sonst .${parsed.ext}-Dateien hoch, „${owner}“ nicht.` : `„${owner}“ hat bisher eine .${lists[owner].src.ext}-Datei hochgeladen, das hier ist .${parsed.ext}.`;
+      const v = await choiceDlg(`⚠ Achtung: ${why} Unter dem falschen Namen stehen die Teile dann doppelt oder beim falschen Besitzer.`,
+        [...(sug ? [{ label: `Als „${sug}“ hochladen`, value: 'sug', cls: 'primary' }] : []), { label: `Trotzdem als „${owner}“`, value: 'own' }, { label: 'Abbrechen', value: '' }]);
+      if (!v) return;
+      if (v === 'sug') { owner = sug; $('#ownerIn').value = sug; }
+    } }
   const btn = $('#mapUpload'); btn.disabled = true; msg.textContent = 'Wird verschlüsselt und hochgeladen…';
   try {
     await ensureConn();
-    const data = { owner, items: its, at: nowIso(), by: cfg.name };
+    const src = { file: parsed.file || '', ext: parsed.ext || (lists[owner] && lists[owner].src && lists[owner].src.ext) || '' };
+    const data = { owner, items: its, at: nowIso(), by: cfg.name, src };
     const res = await Sync.writeFile(conn, 'lists/' + encodeURIComponent(owner) + '.enc', data, lists[owner] && lists[owner].sha, (r, l) => l, 'Liste ' + owner + ' von ' + cfg.name);
-    lists[owner] = { items: its, at: data.at, by: data.by, sha: res.sha };
+    lists[owner] = { items: its, at: data.at, by: data.by, src, sha: res.sha };
     persist(); rebuildItems(); activeDate = latestDate(); rebuild(); renderAll();
     $('#mapCard').hidden = true; $('#pasteIn').value = ''; parsed = null; msg.textContent = '';
     show('kunden');
