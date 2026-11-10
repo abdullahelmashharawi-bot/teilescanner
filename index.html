@@ -482,7 +482,7 @@ function rebuildItems() {
   }
 }
 let indexOther = [], indexAll = [];
-function rebuild() { index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items); }
+function rebuild() { indexHidden = null; index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items); }
 function persist() { store.set('kunden', kunden); store.set('retouren', retouren); store.set('lists', lists); store.set('checks', checks); store.set('memory', memory); store.set('sha', sha); store.set('dirty', dirty); }
 function refresh() { catCache = null; rebuildItems(); rebuild(); renderAll(); if (partOpen && !$('#teilCard').hidden) openPart(partOpen); else if ($('#v-teile').classList.contains('active')) renderTeile(); if (current && current.sel) (current.ret ? renderRetoure() : renderResult()); }
 
@@ -645,7 +645,7 @@ function setDa(it, da) {
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
 }
 function resetCheck(it) { checks[it.id] = { n: 0, by: cfg.name, at: nowIso(), da: 0, daBy: cfg.name, daAt: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(); }
-const OFFEN_TAGE = 28;  // Bestellungen anderer Tage (letzte 4 Wochen, wie Retoure-Frist) gelten als "offen"
+const OFFEN_TAGE = 4;   // Scanner schaut nur die letzten 4 Tage an; Älteres gilt als "nicht in deiner Liste"
 // Teil nicht am angezeigten Tag: in anderen Tagen suchen (offen & jung zuerst, sonst neueste)
 function otherDayFind(text, codes, loose) {
   let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && (loose || x.score >= 110)) : [];
@@ -654,18 +654,20 @@ function otherDayFind(text, codes, loose) {
   const limit = addDays(isoToday(0), -OFFEN_TAGE);
   const its = [...new Set(h.map((x) => x.i))].map((i) => ({ i, it: items[i] }));
   const open = its.filter(({ it }) => (it.done || 0) < (it.qty || 1) && (it.datum || '') >= limit).sort((a, b) => (b.it.datum || '').localeCompare(a.it.datum || ''));
-  const all = its.slice().sort((a, b) => (b.it.datum || '').localeCompare(a.it.datum || '') || ((b.it.at || '').localeCompare(a.it.at || '')));
+  const all = its.filter(({ it }) => (it.datum || '') >= limit).sort((a, b) => (b.it.datum || '').localeCompare(a.it.datum || '') || ((b.it.at || '').localeCompare(a.it.at || '')));
+  if (!all.length) return { key: Matcher.norm(items[its[0].i].nummer), open: [], notMine: true, nummer: items[its[0].i].nummer };
   return { key: Matcher.norm(items[(open[0] || all[0]).i].nummer), open: open.map((x) => ({ i: x.i, score: 150, exact: true })), last: all[0].it, lastI: all[0].i };
 }
 function showOtherDay(od, ctx) {
   if (od.open.length) { showResult(od.open, ctx); return; }
+  if (od.notMine) { showNotMine(od.nummer); return; }
   // schon abgegeben -> nur Info
   const it = od.last; const r = $('#result'); current = { info: true, hits: [] };
   r.className = 'info';
   r.innerHTML = `<div class="lbl">Teil vom ${fmtLong(it.datum)}</div>
     <div class="kunde">${esc(it.kunde)} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
-    <div class="flag" style="background:var(--ok);color:#04210f">${(it.done || 0) > 0 ? `✓ Abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}` : 'Älter als ' + OFFEN_TAGE + ' Tage'}</div>
+    <div class="flag" style="background:var(--ok);color:#04210f">✓ Schon abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}</div>
     <div class="row actions"><button class="btn" id="rNext">Weiter</button></div>`;
   r.hidden = false; $('#rNext').onclick = nextScan; feedback(); setStatus('');
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -931,6 +933,8 @@ async function loop() {
         // nicht bestellt? (muss zweimal hintereinander gleich erkannt werden)
         const od = otherDayFind(text, codes);
         if (od) { if (lastWarn === od.key) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showOtherDay(od, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        const hd = hiddenFind(text, codes);
+        if (hd) { if (lastWarn === 'H' + hd.key) { showNotMine(hd.nummer); break; } lastWarn = 'H' + hd.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
         if (codes.some((c) => memory.ean[Matcher.norm(c)])) { const od2 = otherDayHits('', codes); if (od2) { if (lastWarn === od2.key) { showNotOrdered(od2); break; } lastWarn = od2.key; $('#frame').classList.remove('busy'); continue; } }
         lastWarn = null;
         // unbekannter Barcode, mehrmals gesehen, aber keine Nummer lesbar -> zuordnen lassen
@@ -947,7 +951,7 @@ async function loop() {
           showResult(hits, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break;
         }
         lastHit = top.i; setStatus('Fast… bitte ruhig halten');
-      } else { lastHit = null; if (Date.now() - scanStart > 7000) setStatus('Noch nichts erkannt – näher ran, gerade halten, gutes Licht. Oder „Foto machen“.'); }
+      } else { lastHit = null; if (Date.now() - scanStart > 7000) setStatus(`Nichts gefunden. Steht das Teil nicht in deiner Liste (letzte ${OFFEN_TAGE} Tage), ist es wahrscheinlich von Abdul → zur Seite legen. Sonst näher ran oder eintippen.`); }
     } catch (e) { if (!/neu gestartet/.test(e.message)) setStatus('Fehler bei der Erkennung: ' + e.message); await new Promise((r) => setTimeout(r, 500)); }
     $('#frame').classList.remove('busy');
   }
@@ -990,6 +994,7 @@ $('#photo').onchange = async (e) => {
     if (hits.length) showResult(hits, { barcode: codes[0], text, thumb: th });
     else if (otherDayFind(text, codes, true)) showOtherDay(otherDayFind(text, codes, true), { barcode: codes[0], text, thumb: th });
     else if (otherDayHits(text, codes)) showNotOrdered(otherDayHits(text, codes));
+    else if (hiddenFind(text, codes)) showNotMine(hiddenFind(text, codes).nummer);
     else if (codes.find((c) => !memory.ean[Matcher.norm(c)]) && items.some(onDay)) showAssign(codes.find((c) => !memory.ean[Matcher.norm(c)]), th);
     else setStatus(`Keine Nummer aus der Liste vom ${fmtLong(activeDate)} gefunden. Tipp: näher an das Etikett – oder eintippen.`);
   } catch (err) { setStatus('Foto konnte nicht gelesen werden: ' + err.message); }
@@ -1014,7 +1019,7 @@ $('#manual').onsubmit = (e) => {
   // andere Tage
   const od = otherDayFind(q, [], true);
   if (od) { pauseLoop(); showOtherDay(od, null); $('#manualIn').blur(); }
-  else setStatus('„' + q + '“ steht in keiner Liste.');
+  else { pauseLoop(); showNotMine(q); $('#manualIn').blur(); }
 };
 
 // ---------- Treffer ----------
@@ -1048,7 +1053,7 @@ function renderResult() {
     <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
     <div class="meta muted">${q > 1 ? `Menge ${q} · 📦 ${Math.min(it.da || 0, q)} da · ✓ ${it.done || 0} abgegeben · ` : ''}bestellt ${fmtDate(it.datum)}</div>
-    ${!done && isDa ? `<div class="flag" style="background:var(--warn)">📦 Ist da – bereitgelegt${it.daBy ? ' von ' + esc(it.daBy) + ' um ' + hhmm(it.daAt) : ''}</div>` : ''}
+    ${!done && isDa ? `<div class="flag" style="background:var(--warn);font-size:16px">🟡 ${it.daAt && localDay(it.daAt) !== isoToday(0) ? `Dieses Teil hast du am ${fmtDate(localDay(it.daAt))} als <b>da</b> gescannt, aber noch nicht abgegeben.` : `Schon als <b>da</b> gescannt${it.daBy ? ' von ' + esc(it.daBy) + ' um ' + hhmm(it.daAt) : ''}, aber noch nicht abgegeben.`} Kunde: <b>${esc(it.kunde)}</b>. Jetzt abgeben?</div>` : ''}
     <div class="learn">${esc(learnTxt)}</div>
     ${(() => { const h = current.hits.find((x) => x.id === current.sel); return h && !h.exact && h.score < 80 && current.ctx ? '<div class="flag check">Bitte prüfen – nicht ganz sicher erkannt</div> ' : ''; })()}
     ${done ? `<div class="flag" style="background:var(--ok);color:#04210f">✓ Schon abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}</div>` : ''}
@@ -1279,7 +1284,28 @@ function retText() {
 }
 $('#retShare').onclick = () => { $('#shareTitle').textContent = 'Retouren'; $('#shareBox').textContent = retText(); $('#shareDlg').hidden = false; };
 
-function showNotOrdered(od) {
+// 🔴 Nicht in der eigenen Liste der letzten Tage -> wahrscheinlich Abdul
+function showNotMine(nummer) {
+  const r = $('#result'); current = { warn: true, hits: [] };
+  r.className = 'warn';
+  r.innerHTML = `<div class="kunde" style="font-size:24px">🔴 Nicht in deiner Liste</div>
+    <div class="meta" style="font-size:17px;margin-top:6px"><b>Wahrscheinlich Abdul – bitte zur Seite legen.</b></div>
+    ${nummer ? `<div class="meta">Nr. <b>${esc(nummer)}</b></div>` : ''}
+    <div class="meta muted">Nicht bestellt in den letzten ${OFFEN_TAGE} Tagen.</div>
+    <div class="row actions"><button class="btn" id="rNext">Weiter</button></div>`;
+  r.hidden = false; $('#rNext').onclick = nextScan; warnSound(); setStatus('');
+  r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+// bekannte Nummern außerhalb der eigenen Liste (ausgeschaltete Listen, gelernte Teile)
+let hiddenArr = [], indexHidden = null;
+function hiddenFind(text, codes) {
+  if (!indexHidden) { hiddenArr = [...Object.keys(lists).filter(isOff).flatMap((o) => lists[o].items || []), ...Object.values(memory.parts || {}).map((p) => ({ nummer: p.n }))].filter((x) => x && x.nummer); indexHidden = Matcher.buildIndex(hiddenArr); }
+  const h = text ? Matcher.match(text, indexHidden).filter((x) => x.exact && x.score >= 110) : [];
+  if (h.length) return { key: Matcher.norm(hiddenArr[h[0].i].nummer), nummer: hiddenArr[h[0].i].nummer };
+  for (const c of codes || []) { const k = memory.ean[Matcher.norm(c)]; if (k) return { key: k, nummer: (memory.parts[k] && memory.parts[k].n) || k }; }
+  return null;
+}
+function showNotOrdered(od) { if (!od.last || (od.last.datum || '') < addDays(isoToday(0), -OFFEN_TAGE)) return showNotMine(od.nummer);
   const r = $('#result'); current = { warn: true, hits: [] };
   const l = od.last;
   r.className = 'warn';
