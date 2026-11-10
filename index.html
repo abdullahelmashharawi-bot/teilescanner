@@ -452,12 +452,18 @@ const START_DEFAULT = self.__TS_START_DEFAULT || '2026-11-01'; // (Test-Hook)
 const IGNORE_DEFAULT = { Abdul: ['Ciyhan', 'IC', 'AP', 'GG', 'EK'] };
 const ignoreMap = () => (checks['CFG|ignore'] && checks['CFG|ignore'].map) || IGNORE_DEFAULT;
 const ignored = (owner, kunde) => (ignoreMap()[owner] || []).some((n) => kNorm(n) === kNorm(kunde));
+const kNorm = (k) => String(k || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+// Ausgeschaltete Listen (z. B. Abdul): bleiben gespeichert, werden aber nirgends angezeigt und können nicht hochgeladen werden
+const offList = () => (checks['CFG|off'] && checks['CFG|off'].owners) || [];
+const isOff = (o) => offList().some((x) => kNorm(x) === kNorm(o));
+const onOwners = () => Object.keys(lists).filter((o) => !isOff(o)).sort();
 const appStart = () => (checks['CFG|start'] && checks['CFG|start'].start) || START_DEFAULT;
 function rebuildItems() {
   const start = appStart();
   items = [];
   for (const owner of Object.keys(lists).sort()) {
     const seen = {};
+    if (isOff(owner)) continue;
     for (const x of lists[owner].items || []) {
       if (ignored(owner, x.kunde)) continue;
       const base = owner + '|' + x.kunde + '|' + x.datum + '|' + Matcher.norm(x.nummer);
@@ -1242,12 +1248,12 @@ $('#modeEnd').onclick = () => {
 
 let retDay = isoToday(0);
 function renderRetList() {
-  const all = Object.values(retouren).filter((r) => !r.deleted);
+  const all = Object.values(retouren).filter((r) => !r.deleted && !isOff(r.owner));
   const days = [...new Set([isoToday(0), ...all.map((r) => r.tag)])].sort().reverse().slice(0, 10);
   if (!days.includes(retDay)) retDay = isoToday(0);
   $('#retDays').innerHTML = days.map((d) => { const n = all.filter((r) => r.tag === d).length; return `<button class="chip ${d === retDay ? 'on' : ''}" data-d="${d}">${d === isoToday(0) ? 'Heute' : fmtDate(d)}${n ? ' · ' + n : ''}</button>`; }).join('');
   $('#retDays').querySelectorAll('[data-d]').forEach((b) => b.onclick = () => { retDay = b.dataset.d; renderRetList(); });
-  const owners = Object.keys(lists).sort();
+  const owners = onOwners();
   $('#retOwners').innerHTML = owners.length > 1 ? ['Alle', ...owners].map((o) => `<button class="chip ${o === ownerFilter ? 'on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('') : '';
   $('#retOwners').querySelectorAll('.chip').forEach((b) => b.onclick = () => { ownerFilter = b.dataset.o; store.set('ownerFilter', ownerFilter); renderAll(); });
   const list = all.filter((r) => r.tag === retDay && (ownerFilter === 'Alle' || r.owner === ownerFilter));
@@ -1263,7 +1269,7 @@ function renderRetList() {
   });
 }
 function retText() {
-  const list = Object.values(retouren).filter((r) => !r.deleted && r.tag === retDay && (ownerFilter === 'Alle' || r.owner === ownerFilter));
+  const list = Object.values(retouren).filter((r) => !r.deleted && !isOff(r.owner) && r.tag === retDay && (ownerFilter === 'Alle' || r.owner === ownerFilter));
   if (!list.length) return `Keine Retouren am ${fmtLong(retDay)}.`;
   const g = new Map(); for (const r of list) { const k = r.kunde + (Object.keys(lists).length > 1 ? ' / ' + r.owner : ''); if (!g.has(k)) g.set(k, []); g.get(k).push(r); }
   let t = `Retouren ${fmtLong(retDay)}${ownerFilter !== 'Alle' ? ' (' + ownerFilter + ')' : ''}: ${list.length} ${list.length === 1 ? 'Teil' : 'Teile'}\n`;
@@ -1327,7 +1333,7 @@ let onlyOpen = store.get('onlyOpen', false);
 // Filter-Knopf: Auswahl nach Liste (Alle / Abdul / Cyhat …) und offen/alle
 function filterLabel() { const o = ownerFilter === 'Alle' ? 'Alle' : ownerFilter; return `${o}${onlyOpen ? ' · offen' : ''} ▾`; }
 $('#toggleOpen').onclick = async () => {
-  const owners = Object.keys(lists).sort(); const mark = (on) => (on ? '● ' : '○ ');
+  const owners = onOwners(); const mark = (on) => (on ? '● ' : '○ ');
   const v = await choiceDlg('Was soll angezeigt werden?', [
     { label: mark(ownerFilter === 'Alle') + 'Alle anzeigen (alle Listen)', value: 'o:Alle', cls: ownerFilter === 'Alle' ? 'primary' : '' },
     ...owners.map((o) => ({ label: mark(ownerFilter === o) + 'Nur ' + o, value: 'o:' + o, cls: ownerFilter === o ? 'primary' : '' })),
@@ -1341,7 +1347,7 @@ $('#toggleOpen').onclick = async () => {
 };
 $('#filter').oninput = renderKunden;
 function renderOwners() {
-  const owners = Object.keys(lists).sort();
+  const owners = onOwners();
   if (ownerFilter !== 'Alle' && !owners.includes(ownerFilter)) ownerFilter = 'Alle';
   $('#owners').innerHTML = ''; $('#toggleOpen').textContent = filterLabel();
 }
@@ -1563,7 +1569,7 @@ function renderAll() {
   $('#learnInfo').textContent = `${parts.length} Teile kennt die App · ${Object.keys(memory.ean || {}).length} Barcodes · ${parts.filter((p) => p.photo).length} Kartonfotos · ${Object.keys(memory.prefix || {}).length} Marken-Kürzel. Jedes Abhaken bringt der App etwas Neues bei – für alle Handys.`;
 }
 function renderStand() {
-  const owners = Object.keys(lists).sort();
+  const owners = onOwners();
   const html = owners.length ? 'Stand: ' + owners.map((o) => { const at = lists[o].at; const old = !at || Date.now() - new Date(at).getTime() > 24 * 3600e3;
     return `<span class="${old ? 'old' : ''}">${old ? '⚠ ' : ''}${esc(o)} ${at ? dayTime(at) : '?'}</span>`; }).join(' · ') : '';
   $('#stand1').innerHTML = html; $('#stand2').innerHTML = html;
@@ -1617,10 +1623,18 @@ function renderLists() {
   const owners = Object.keys(lists).sort();
   const dup = Object.entries(crossDupes());
   $('#listsBox').innerHTML = (dup.length ? `<div class="flag check" style="margin:0 0 10px;text-align:left">⚠ ${dup.map(([k, n]) => `${n} Teile stehen gleichzeitig in ${esc(k.replace(' + ', ' und '))}`).join(', ')} – gleicher Kunde, gleiche Nummer, gleicher Tag. Wahrscheinlich wurde eine Datei unter dem falschen Namen hochgeladen. Lösung: jede Datei einmal neu unter dem richtigen Namen hochladen (Excel = Abdul, ODS = Cihat). Das ersetzt die alte Liste komplett.</div>` : '') + (owners.length ? owners.map((o) => { const l = lists[o]; const n = (l.items || []).length; const k = new Set((l.items || []).map((x) => x.kunde)).size;
-    return `<div class="lrow"><div><b style="color:var(--text)">${esc(o)}</b><div style="font-size:13px">${n} Positionen · ${k} Kunden${l.at ? '<br>hochgeladen ' + dayTime(l.at) + (l.by ? ' von ' + esc(l.by) : '') : ''}${l.src && l.src.file ? '<br>Datei: ' + esc(l.src.file) : ''}<br><span data-ign="${esc(o)}" style="text-decoration:underline dotted;cursor:pointer">🚫 Keine Kunden (ignoriert): ${(ignoreMap()[o] || []).length ? esc((ignoreMap()[o]).join(', ')) : '–'}</span></div></div><div style="display:flex;flex-direction:column;gap:6px"><button class="btn small ghost" data-ren="${esc(o)}">Umbenennen</button><button class="btn small ghost" data-del="${esc(o)}">Entfernen</button></div></div>
+    return `<div class="lrow" style="${isOff(o) ? 'opacity:.55' : ''}"><div><b style="color:var(--text)">${esc(o)}</b>${isOff(o) ? ' <b style="color:var(--warn,#f59e0b)">· AUSGESCHALTET</b>' : ''}<div style="font-size:13px">${n} Positionen · ${k} Kunden${l.at ? '<br>hochgeladen ' + dayTime(l.at) + (l.by ? ' von ' + esc(l.by) : '') : ''}${l.src && l.src.file ? '<br>Datei: ' + esc(l.src.file) : ''}<br><span data-ign="${esc(o)}" style="text-decoration:underline dotted;cursor:pointer">🚫 Keine Kunden (ignoriert): ${(ignoreMap()[o] || []).length ? esc((ignoreMap()[o]).join(', ')) : '–'}</span></div></div><div style="display:flex;flex-direction:column;gap:6px"><button class="btn small ${isOff(o) ? 'primary' : 'ghost'}" data-off="${esc(o)}">${isOff(o) ? 'Einschalten' : 'Ausschalten'}</button><button class="btn small ghost" data-ren="${esc(o)}">Umbenennen</button><button class="btn small ghost" data-del="${esc(o)}">Entfernen</button></div></div>
       <div data-ignbox="${esc(o)}" hidden style="margin:-4px 0 10px"><div class="muted" style="font-size:13px;margin-bottom:4px">Reiter/Namen, die keine Kunden sind (z. B. Händler), mit Komma getrennt:</div><div class="row"><input type="text" value="${esc((ignoreMap()[o] || []).join(', '))}" style="flex:2"><button class="btn small primary" style="flex:1" data-igngo="${esc(o)}">Speichern</button></div></div>
       <div class="row" data-renbox="${esc(o)}" hidden style="margin:-4px 0 10px"><input type="text" value="${esc(o)}" style="flex:2"><button class="btn small primary" style="flex:1" data-rengo="${esc(o)}">Speichern</button></div>`; }).join('') : 'Noch keine Liste hochgeladen.');
   $('#listsBox').querySelectorAll('[data-ren]').forEach((b) => b.onclick = () => { const box = $('#listsBox').querySelector(`[data-renbox="${CSS.escape(b.dataset.ren)}"]`); box.hidden = !box.hidden; if (!box.hidden) box.querySelector('input').focus(); });
+  $('#listsBox').querySelectorAll('[data-off]').forEach((b) => b.onclick = async () => {
+    const o = b.dataset.off; const off = isOff(o);
+    if (!(await confirmDlg(off ? `Liste „${o}“ wieder einschalten? Dann wird sie wieder überall angezeigt.` : `Liste „${o}“ ausschalten? Sie wird auf allen Handys ausgeblendet und kann nicht mehr hochgeladen werden. Es wird nichts gelöscht – du kannst sie jederzeit wieder einschalten.`))) return;
+    const owners = off ? offList().filter((x) => kNorm(x) !== kNorm(o)) : [...offList(), o];
+    checks['CFG|off'] = { owners, by: cfg.name, at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1;
+    if (!off && ownerFilter === o) { ownerFilter = 'Alle'; store.set('ownerFilter', ownerFilter); }
+    persist(); refresh(); syncSoon(300);
+  });
   $('#listsBox').querySelectorAll('[data-ign]').forEach((b) => b.onclick = () => { const box = $('#listsBox').querySelector(`[data-ignbox="${CSS.escape(b.dataset.ign)}"]`); box.hidden = !box.hidden; });
   $('#listsBox').querySelectorAll('[data-igngo]').forEach((b) => b.onclick = () => {
     const o = b.dataset.igngo; const names = b.parentElement.querySelector('input').value.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
@@ -1835,7 +1849,6 @@ function detectOne(rows, multi) {
 }
 
 // Welche vorhandene Liste hat die gleichen Kunden wie die neue Datei?
-const kNorm = (k) => String(k || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
 function kundenOverlap(newItems) {
   const nk = new Set(newItems.map((x) => kNorm(x.kunde)).filter(Boolean)); const res = {};
   for (const o of Object.keys(lists)) { const ok = new Set((lists[o].items || []).map((x) => kNorm(x.kunde))); const same = [...nk].filter((k) => ok.has(k)); res[o] = { n: same.length, share: nk.size ? same.length / nk.size : 0, names: newItems.map((x) => x.kunde).filter((k, i, a) => ok.has(kNorm(k)) && a.indexOf(k) === i) }; }
@@ -1936,6 +1949,7 @@ $('#mapUpload').onclick = async () => {
   if (!owner) { msg.innerHTML = '<span class="err-msg">Bitte eintragen, wessen Liste das ist (z. B. Abdul).</span>'; return; }
   const its = mappedItems().map((x) => ({ nummer: x.nummer, bez: x.bez, kunde: x.kunde, qty: x.qty, datum: x.datum }));
   if (!its.length) { msg.innerHTML = '<span class="err-msg">Keine Positionen zum Hochladen.</span>'; return; }
+  if (isOff(owner)) { msg.textContent = `Die Liste „${owner}“ ist ausgeschaltet – Hochladen nicht möglich.`; return; }
   // Schutz: Datei gehört wahrscheinlich zu einer anderen Liste?
   { const ov = kundenOverlap(its); const mine = (ov[owner] || { n: 0 }).n;
     const other = Object.entries(ov).filter(([o, v]) => o !== owner && v.n >= 2 && v.share >= 0.3 && v.n > mine).sort((a, b) => b[1].n - a[1].n)[0];
