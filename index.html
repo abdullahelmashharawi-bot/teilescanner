@@ -482,7 +482,15 @@ function rebuildItems() {
   }
 }
 let indexOther = [], indexAll = [];
-function rebuild() { indexHidden = null; index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items); }
+let otherMap = new Map();
+function rebuild() { index = Matcher.buildIndex(items, onDay); indexOther = Matcher.buildIndex(items, (it) => !onDay(it)); indexAll = Matcher.buildIndex(items);
+  otherMap = new Map(); for (const e of indexOther) { const a = otherMap.get(e.v); if (a) a.push(e); else otherMap.set(e.v, [e]); } }
+// schnelle Suche nur nach exakten Nummern an anderen Tagen (gleiches Ergebnis wie match(...).filter(exact), aber ohne alle Nummern durchzugehen)
+function otherExact(text, minLen) {
+  const best = new Map();
+  for (const c of Matcher.candidates(text)) for (const e of otherMap.get(Matcher.fuzzy(c)) || []) { if (e.len < minLen) continue; const sc = 100 + e.len * 2; const o = best.get(e.i); if (!o || o.score < sc) best.set(e.i, { i: e.i, score: sc, exact: true, cand: c }); }
+  return [...best.values()].sort((a, b) => b.score - a.score);
+}
 function persist() { store.set('kunden', kunden); store.set('retouren', retouren); store.set('lists', lists); store.set('checks', checks); store.set('memory', memory); store.set('sha', sha); store.set('dirty', dirty); }
 function refresh() { catCache = null; rebuildItems(); rebuild(); renderAll(); if (partOpen && !$('#teilCard').hidden) openPart(partOpen); else if ($('#v-teile').classList.contains('active')) renderTeile(); if (current && current.sel) (current.ret ? renderRetoure() : renderResult()); }
 
@@ -648,7 +656,7 @@ function resetCheck(it) { checks[it.id] = { n: 0, by: cfg.name, at: nowIso(), da
 const OFFEN_TAGE = 4;   // Scanner schaut nur die letzten 4 Tage an; Älteres gilt als "nicht in deiner Liste"
 // Teil nicht am angezeigten Tag: in anderen Tagen suchen (offen & jung zuerst, sonst neueste)
 function otherDayFind(text, codes, loose) {
-  let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && (loose || x.score >= 110)) : [];
+  let h = text ? otherExact(text, loose ? 0 : 5) : [];
   for (const c of codes || []) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, (it) => !onDay(it)));
   if (!h.length) return null;
   const limit = addDays(isoToday(0), -OFFEN_TAGE);
@@ -729,7 +737,7 @@ function wordHits(text, keep = onDay) {
 }
 // Teil erkannt, aber an diesem Tag nicht bestellt?
 function otherDayHits(text, codes) {
-  let h = text ? Matcher.match(text, indexOther).filter((x) => x.exact && x.score >= 110) : []; // nur exakte Nummern ab 5 Zeichen
+  let h = text ? otherExact(text, 5) : []; // nur exakte Nummern ab 5 Zeichen
   for (const c of codes || []) h = h.concat(Matcher.matchBarcode(c, items, memory.ean, (it) => !onDay(it)));
   if (!h.length) for (const c of codes || []) { const k = memory.ean[Matcher.norm(c)]; if (k) return { nummer: (memory.parts[k] && memory.parts[k].n) || k, key: k }; }
   if (!h.length) return null;
@@ -824,7 +832,7 @@ async function readBarcodes(src, full) {
 // ---------- Kamera ----------
 const video = $('#video');
 let camWanted = false, loopGen = 0, lastT = -1, stuck = 0, restarting = false;
-let stream = null, looping = false, paused = false, lastHit = null, lastWarn = null, unkCode = null, unkCount = 0, scanStart = 0, audioCtx = null;
+let stream = null, looping = false, paused = false, lastHit = null, lastWarn = null, warnCount = 0, unkCode = null, unkCount = 0, scanStart = 0, audioCtx = null;
 $('#startCam').onclick = startCam;
 $('#stopCam').onclick = stopCam;
 async function startCam() {
@@ -932,9 +940,9 @@ async function loop() {
       if (!hits.length) {
         // nicht bestellt? (muss zweimal hintereinander gleich erkannt werden)
         const od = otherDayFind(text, codes);
-        if (od) { if (lastWarn === od.key) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showOtherDay(od, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        if (od) { warnCount = lastWarn === od.key ? warnCount + 1 : 1; if (warnCount >= (od.notMine ? 3 : 2)) { const vw = video.videoWidth, vh = video.videoHeight; const side = Math.min(vw, vh) * 0.8; showOtherDay(od, { barcode: codes[0], text, thumb: thumb(video, (vw - side) / 2, (vh - side) / 2, side, side) }); break; } lastWarn = od.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
         const hd = hiddenFind(text, codes);
-        if (hd) { if (lastWarn === 'H' + hd.key) { showNotMine(hd.nummer); break; } lastWarn = 'H' + hd.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
+        if (hd) { warnCount = lastWarn === 'H' + hd.key ? warnCount + 1 : 1; if (warnCount >= 3) { showNotMine(hd.nummer); break; } lastWarn = 'H' + hd.key; await new Promise((r) => setTimeout(r, 150)); $('#frame').classList.remove('busy'); continue; }
         if (codes.some((c) => memory.ean[Matcher.norm(c)])) { const od2 = otherDayHits('', codes); if (od2) { if (lastWarn === od2.key) { showNotOrdered(od2); break; } lastWarn = od2.key; $('#frame').classList.remove('busy'); continue; } }
         lastWarn = null;
         // unbekannter Barcode, mehrmals gesehen, aber keine Nummer lesbar -> zuordnen lassen
@@ -1297,11 +1305,17 @@ function showNotMine(nummer) {
   r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 // bekannte Nummern außerhalb der eigenen Liste (ausgeschaltete Listen, gelernte Teile)
-let hiddenArr = [], indexHidden = null;
+// schnell: nur exakte Nummern (ab 5 Zeichen) per Nachschlagen, kein Vergleich mit allen Nummern
+let hiddenMap = null, hiddenSig = '';
 function hiddenFind(text, codes) {
-  if (!indexHidden) { hiddenArr = [...Object.keys(lists).filter(isOff).flatMap((o) => lists[o].items || []), ...Object.values(memory.parts || {}).map((p) => ({ nummer: p.n }))].filter((x) => x && x.nummer); indexHidden = Matcher.buildIndex(hiddenArr); }
-  const h = text ? Matcher.match(text, indexHidden).filter((x) => x.exact && x.score >= 110) : [];
-  if (h.length) return { key: Matcher.norm(hiddenArr[h[0].i].nummer), nummer: hiddenArr[h[0].i].nummer };
+  const sig = Object.keys(lists).filter(isOff).map((o) => o + (lists[o].at || '') + (lists[o].items || []).length).join() + '|' + Object.keys(memory.parts || {}).length;
+  if (!hiddenMap || sig !== hiddenSig) {
+    hiddenSig = sig; hiddenMap = new Map();
+    const add = (n) => { if (!n) return; for (const v of Matcher.variants(n)) if (v.length >= 5) { const f = Matcher.fuzzy(v); if (!hiddenMap.has(f)) hiddenMap.set(f, n); } };
+    for (const o of Object.keys(lists).filter(isOff)) for (const x of lists[o].items || []) add(x.nummer);
+    for (const p of Object.values(memory.parts || {})) add(p.n);
+  }
+  if (text) for (const c of Matcher.candidates(text)) { const n = hiddenMap.get(Matcher.fuzzy(c)); if (n) return { key: Matcher.norm(n), nummer: n }; }
   for (const c of codes || []) { const k = memory.ean[Matcher.norm(c)]; if (k) return { key: k, nummer: (memory.parts[k] && memory.parts[k].n) || k }; }
   return null;
 }
