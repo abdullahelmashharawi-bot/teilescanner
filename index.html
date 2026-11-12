@@ -112,6 +112,8 @@
   [hidden] { display: none !important; }
   .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; left: -9999px; }
   .hright { display: flex; align-items: center; gap: 10px; }
+  #tokBand { background: #5c3b00; color: #ffd98a; padding: 10px 14px; font-size: 15px; line-height: 1.35; cursor: pointer; border-bottom: 1px solid #8a5a00; }
+  #tokBand.red { background: #5a1414; color: #ffb4b4; border-color: #8a2020; }
   #syncDot { cursor: pointer; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
   #syncDot.ok { background: var(--ok); } #syncDot.busy { background: var(--warn); } #syncDot.err { background: var(--bad); }
   .owners { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
@@ -202,6 +204,7 @@
   <h1>Teile<span>-</span>Scanner</h1>
   <div class="hright"><div id="progress"></div><div id="syncDot" title="Synchronisation"></div></div>
 </header>
+<div id="tokBand" hidden></div>
 
 <main>
   <!-- EINRICHTUNG -->
@@ -327,6 +330,8 @@
       <label class="f">Kunde</label><select id="mapKunde"></select>
       <label class="f">Bezeichnung (optional)</label><select id="mapBez"></select>
       <label class="f">Datum (optional)</label><select id="mapDatum"></select>
+      <label class="f">💶 Preis bar (optional)</label><select id="mapPbar"></select>
+      <label class="f">🏦 Preis überwiesen (optional)</label><select id="mapPbank"></select>
       <div id="dateBox" hidden>
         <label class="f">Welche Tage übernehmen?</label>
         <div id="dateChips" class="chips"></div>
@@ -339,6 +344,13 @@
     <div class="card">
       <h2>Gelernt</h2>
       <div id="learnInfo" class="muted" style="font-size:14px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Zugang läuft ab</h2>
+      <div class="muted" style="font-size:14px">Der GitHub-Token hat ein Ablaufdatum. Trag es hier einmal ein (steht bei GitHub beim Token als „Expires on“). Ab <b>14 Tagen davor</b> warnt die App oben auf <b>allen</b> Handys.</div>
+      <div class="row" style="margin-top:10px"><input type="date" id="tokIn" style="flex:2"><button class="btn small" id="tokSave" style="flex:1">Speichern</button></div>
+      <div id="tokMsg" style="margin-top:6px;font-size:14px"></div>
     </div>
 
     <div class="card">
@@ -619,7 +631,7 @@ function sync() {
         for (const o of Object.keys(lists)) if (!names[o]) { delete lists[o]; changed = true; }
       }
       { const before = cfg.name; applyRenames(); if (cfg.name !== before) changed = true; }
-      syncErr = ''; lastSync = nowIso(); store.set('lastSync', lastSync);
+      syncErr = ''; adoptTokenExpiry(); lastSync = nowIso(); store.set('lastSync', lastSync);
       persist();
       if (changed) refresh();
     } catch (e) {
@@ -1224,6 +1236,7 @@ function renderRetoure() {
     <div class="kunde">${esc(it.kunde || '—')} <span class="own">/ ${esc(it.owner)}</span></div>
     <div class="meta">Nr. <b>${esc(it.nummer)}</b>${it.bez ? ' · ' + esc(it.bez) : ''}</div>
     <div class="meta muted">bestellt am ${fmtDate(it.datum)}${it.virtual ? ' · vor App-Start' : (it.done || 0) > 0 && it.by ? ' · abgegeben von ' + esc(it.by) : ''}</div>
+    ${priceBox(it)}
     ${prev ? `<div class="flag">Schon als Retoure erfasst am ${dayTime(prev.at)} von ${esc(prev.by)}</div>` : ''}
     ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder war es:</div><div class="alts">${alts.map((j) => { const fj = frist(items[j]); return `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${fmtDate(items[j].datum)}${fj.status === 'late' ? ' ⛔' : fj.status === 'unk' ? '' : ' ✓'}</button>`; }).join('')}</div>` : ''}
     <div class="muted" style="margin-top:10px;font-size:14px;clear:both">Grund (optional):</div>
@@ -1236,7 +1249,7 @@ function renderRetoure() {
     const j = idxOf(current.sel); if (j < 0) return nextScan(); const x = items[j];
     const id = 'R' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const fx = frist(x);
-    retouren[id] = { id, itemId: x.id, nummer: x.nummer, bez: x.bez || '', kunde: x.kunde, owner: x.owner, bestellt: x.datum, grund: current.reason, tag: isoToday(0), at: nowIso(), by: cfg.name, frist: fx.status === 'soon' ? 'ok' : fx.status, erhalten: fx.erhalten || '' };
+    retouren[id] = { id, itemId: x.id, nummer: x.nummer, bez: x.bez || '', kunde: x.kunde, owner: x.owner, bestellt: x.datum, qty: x.qty || 1, ...(x.pbar ? { pbar: x.pbar } : {}), ...(x.pbank ? { pbank: x.pbank } : {}), grund: current.reason, tag: isoToday(0), at: nowIso(), by: cfg.name, frist: fx.status === 'soon' ? 'ok' : fx.status, erhalten: fx.erhalten || '' };
     dirty.retouren = (dirty.retouren || 0) + 1; persist(); renderRetList(); syncSoon();
     setStatus(`↩ Retoure gespeichert: ${x.nummer} von ${x.kunde} / ${x.owner}${fx.status === 'late' ? ' (nach Frist, Kulanz)' : ''}`); nextScan();
   };
@@ -1273,7 +1286,7 @@ function renderRetList() {
   const g = new Map(); for (const r of list.sort((a, b) => a.at.localeCompare(b.at))) { const k = r.kunde + ' / ' + r.owner; if (!g.has(k)) g.set(k, []); g.get(k).push(r); }
   $('#retList').innerHTML = list.length ? [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de')).map(([k, arr]) => `
     <div class="kgroup"><div class="khead"><span>${esc(k.split(' / ')[0])}<span class="tag">${esc(k.split(' / ')[1])}</span></span><span class="cnt">${arr.length}</span></div>
-    ${arr.map((r) => `<div class="ritem"><div><div class="nr">${esc(r.nummer)}${r.grund ? `<span class="rtag">${esc(r.grund)}</span>` : ''}</div>${r.bez ? `<div class="bz">${esc(r.bez)}</div>` : ''}<div class="bz">bestellt ${fmtDate(r.bestellt)} · erfasst ${hhmm(r.at)} von ${esc(r.by)}</div><div>${fristTag(r)}</div></div><button class="x" data-del="${esc(r.id)}" aria-label="Löschen">×</button></div>`).join('')}</div>`).join('')
+    ${arr.map((r) => `<div class="ritem"><div><div class="nr">${esc(r.nummer)}${r.grund ? `<span class="rtag">${esc(r.grund)}</span>` : ''}</div>${r.bez ? `<div class="bz">${esc(r.bez)}</div>` : ''}${priceShort(r) ? `<div class="bz" style="color:#7be0a4;font-weight:600">${priceShort(r)}</div>` : ''}<div class="bz">bestellt ${fmtDate(r.bestellt)} · erfasst ${hhmm(r.at)} von ${esc(r.by)}</div><div>${fristTag(r)}</div></div><button class="x" data-del="${esc(r.id)}" aria-label="Löschen">×</button></div>`).join('')}</div>`).join('')
     : `<div class="muted" style="padding:20px;text-align:center">Keine Retouren ${retDay === isoToday(0) ? 'heute' : 'am ' + fmtLong(retDay)}.</div>`;
   $('#retList').querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
     const r = retouren[b.dataset.del]; if (!r) return;
@@ -1287,10 +1300,23 @@ function retText() {
   const g = new Map(); for (const r of list) { const k = r.kunde + (Object.keys(lists).length > 1 ? ' / ' + r.owner : ''); if (!g.has(k)) g.set(k, []); g.get(k).push(r); }
   let t = `Retouren ${fmtLong(retDay)}${ownerFilter !== 'Alle' ? ' (' + ownerFilter + ')' : ''}: ${list.length} ${list.length === 1 ? 'Teil' : 'Teile'}\n`;
   for (const [k, arr] of [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], 'de')))
-    t += `\n${k}:\n` + arr.map((r) => `- ${r.nummer}${r.bez ? ' (' + r.bez + ')' : ''} – bestellt ${fmtDate(r.bestellt)}${r.erhalten ? ', erhalten ' + fmtDate(r.erhalten) : ''}${r.frist === 'late' ? ' – ⚠ NACH FRIST (Kulanz)' : r.erhalten ? ' – in Frist' : ''}${r.grund ? ' – ' + r.grund : ''}`).join('\n') + '\n';
+    t += `\n${k}:\n` + arr.map((r) => `- ${r.nummer}${r.bez ? ' (' + r.bez + ')' : ''} – bestellt ${fmtDate(r.bestellt)}${r.erhalten ? ', erhalten ' + fmtDate(r.erhalten) : ''}${r.frist === 'late' ? ' – ⚠ NACH FRIST (Kulanz)' : r.erhalten ? ' – in Frist' : ''}${r.grund ? ' – ' + r.grund : ''}${priceShort(r) ? ' – ' + priceShort(r) : ''}`).join('\n') + '\n';
   return t.trim();
 }
 $('#retShare').onclick = () => { $('#shareTitle').textContent = 'Retouren'; $('#shareBox').textContent = retText(); $('#shareDlg').hidden = false; };
+
+// Gutschrift-Preis (Spalte D = bar, Spalte E = überwiesen); Preis gilt immer für die ganze Position
+function priceLines(x) {
+  const q = x.qty || 1, per = (n) => (q > 1 ? ` <span class="muted" style="font-size:14px;font-weight:400">(${q} Stück gesamt · ${euro(n / q)} pro Stück)</span>` : '');
+  const out = []; if (x.pbar) out.push({ ico: '💶', txt: 'Bar-Gutschrift', n: x.pbar, per: per(x.pbar) }); if (x.pbank) out.push({ ico: '🏦', txt: 'Gutschrift auf Bank', n: x.pbank, per: per(x.pbank) });
+  return out;
+}
+function priceBox(x) {
+  const l = priceLines(x);
+  if (!l.length) return '<div class="muted" style="margin:8px 0;font-size:14px">Kein Preis in der Liste.</div>';
+  return `<div style="margin:10px 0;padding:10px 12px;border-radius:12px;background:#10301f;border:1px solid #1f6b3f">${l.map((p) => `<div style="font-size:22px;font-weight:700">${p.ico} ${p.txt}: ${euro(p.n)}</div>${p.per ? `<div>${p.per}</div>` : ''}`).join('')}</div>`;
+}
+const priceShort = (r) => [r.pbar ? `💶 bar ${euro(r.pbar)}` : '', r.pbank ? `🏦 Bank ${euro(r.pbank)}` : ''].filter(Boolean).join(' / ');
 
 // 🔴 Nicht in der eigenen Liste der letzten Tage -> wahrscheinlich Abdul
 function showNotMine(nummer) {
@@ -1844,6 +1870,15 @@ function toIsoDate(v) {
 }
 const fmtDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y.slice(2)}`; };
 function isoToday(off = 0) { const d = new Date(); d.setDate(d.getDate() + off); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+// Preis aus einer Zelle: "45,00 €", "1.234,50", "45.5" -> Zahl; 0 / leer / Text -> null
+function parsePrice(v) {
+  v = String(v == null ? '' : v).replace(/€|EUR/gi, '').replace(/\s/g, ''); if (!v || !/^-?[\d.,]+$/.test(v) || toIsoDate(v)) return null;
+  const c = v.lastIndexOf(','), d = v.lastIndexOf('.');
+  if (c >= 0 && d >= 0) v = c > d ? v.replace(/\./g, '').replace(',', '.') : v.replace(/,/g, '');
+  else if (c >= 0) v = v.replace(',', '.');
+  const n = parseFloat(v); return isFinite(n) && n > 0 && n < 1e6 ? Math.round(n * 100) / 100 : null;
+}
+const euro = (n) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 const isPrice = (v) => /€|EUR/i.test(v) || /^-?\d{1,6}[.,]\d{2}$/.test(v);
 
 const HEAD = { nr: /art(ikel)?\.?\s*-?\s*n(umme)?r|^nr\.?$|^nummer|teile.?n|^no\.?$/i, kunde: /kunde|empf|^name$|auftragg/i, bez: /bezeich|beschreib|artikel$|^teil$|produkt/i, datum: /datum|^date$|^tag$/i };
@@ -1923,7 +1958,10 @@ function startMapping(sheets, fileName) {
   const card = $('#mapCard'); card.hidden = false;
   $('#sheetInfo').innerHTML = multi ? `<b>${used.length} Reiter</b> gefunden – jeder Reiter ist ein Kunde (${used.slice(0, 6).map((s) => esc(s.name)).join(', ')}${used.length > 6 ? ' …' : ''}).` : '';
   const colName = (c) => { const letter = String.fromCharCode(65 + c); const ex = (parsed.rows.find((r) => r[c]) || [])[c] || ''; return `Spalte ${letter}${parsed.header && parsed.header[c] ? ' – ' + parsed.header[c] : ''}${ex ? '  (z. B. ' + (toIsoDate(ex) ? fmtDate(toIsoDate(ex)) : ex.slice(0, 24)) + ')' : ''}`; };
-  for (const [sel, key, optional] of [['#mapNr', 'nr'], ['#mapKunde', 'kunde'], ['#mapBez', 'bez', true], ['#mapDatum', 'datum', true]]) {
+  // Preisspalten: Spalte D = bar, Spalte E = überwiesen (nur wenn dort wirklich Preise stehen)
+  const priceCol = (c) => { const vs = parsed.rows.map((r) => r[c]).filter((v) => v != null && String(v).trim() !== ''); return vs.length >= 3 && vs.filter((v) => parsePrice(v) != null).length / vs.length >= 0.2; };
+  parsed.map.pbar = parsed.nc > 3 && priceCol(3) ? 3 : -1; parsed.map.pbank = parsed.nc > 4 && priceCol(4) ? 4 : -1;
+  for (const [sel, key, optional] of [['#mapNr', 'nr'], ['#mapKunde', 'kunde'], ['#mapBez', 'bez', true], ['#mapDatum', 'datum', true], ['#mapPbar', 'pbar', true], ['#mapPbank', 'pbank', true]]) {
     const s = $(sel);
     s.innerHTML = (key === 'kunde' && multi ? `<option value="${SHEET}">Name des Reiters</option>` : '') + (optional ? '<option value="-1">— keine —</option>' : '') + Array.from({ length: parsed.nc }, (_, c) => `<option value="${c}">${esc(colName(c))}</option>`).join('');
     s.value = String(parsed.map[key]);
@@ -1955,7 +1993,10 @@ function mappedItems() {
   const { nr, kunde, bez } = parsed.map; const useDate = parsed.map.datum >= 0 && parsed.dates.length;
   return parsed.rows.filter((r) => validNr(r[nr]) && (!useDate || parsed.sel.has(r._date))).map((r) => {
     const b = bez >= 0 ? r[bez] || '' : ''; const m = /(?:^|\s)(\d{1,3})\s*[x×]\s/i.exec(' ' + b + ' ');
-    return { nummer: r[nr].trim(), kunde: (kunde === SHEET ? r._sheet : r[kunde] || '').trim(), bez: b.trim(), qty: m ? +m[1] : 1, done: 0, datum: r._date || isoToday(0) };
+    const o = { nummer: r[nr].trim(), kunde: (kunde === SHEET ? r._sheet : r[kunde] || '').trim(), bez: b.trim(), qty: m ? +m[1] : 1, done: 0, datum: r._date || isoToday(0) };
+    const pb = parsed.map.pbar >= 0 ? parsePrice(r[parsed.map.pbar]) : null, pu = parsed.map.pbank >= 0 ? parsePrice(r[parsed.map.pbank]) : null;
+    if (pb) o.pbar = pb; if (pu) o.pbank = pu;
+    return o;
   });
 }
 function preview() {
@@ -1974,8 +2015,10 @@ function preview() {
   const m = mappedItems(); const kunden = new Set(m.map((x) => x.kunde)).size;
   const noDate = parsed.map.datum < 0 && m.length > 30;
   const skip = {}; if (parsed.map.datum >= 0) for (const r of parsed.rows) if (!r._date && validNr(r[parsed.map.nr])) skip[r._sheet || '–'] = (skip[r._sheet || '–'] || 0) + 1;
+  const nBar = m.filter((x) => x.pbar).length, nBank = m.filter((x) => x.pbank).length;
+  const priceTxt = parsed.map.pbar >= 0 || parsed.map.pbank >= 0 ? `<div class="muted" style="margin-top:10px;font-size:13px">Preise: ${parsed.map.pbar >= 0 ? `💶 bar = Spalte ${String.fromCharCode(65 + parsed.map.pbar)} (${nBar})` : ''}${parsed.map.pbar >= 0 && parsed.map.pbank >= 0 ? ' · ' : ''}${parsed.map.pbank >= 0 ? `🏦 überwiesen = Spalte ${String.fromCharCode(65 + parsed.map.pbank)} (${nBank})` : ''}</div>` : '<div class="muted" style="margin-top:10px;font-size:13px">Keine Preisspalte erkannt (Retoure zeigt dann keinen Preis).</div>';
   const skipTxt = Object.entries(skip).map(([k, n]) => `${esc(k)} (${n})`).join(', ');
-  $('#mapPrev').innerHTML = (noDate ? `<div class="flag check" style="margin-top:10px;text-align:left">⚠ Keine Datums-Spalte erkannt – dann bekämen alle ${m.length} Teile das heutige Datum. Bitte oben bei „Datum“ die richtige Spalte wählen.</div>` : '') + `${skipTxt ? `<div class="muted" style="margin-top:10px;font-size:13px">Ohne Datum, daher übersprungen: ${skipTxt}</div>` : ''}<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen${parsed.multi ? ' von ' + kunden + ' Kunden' : ''} werden übernommen. Vorschau:</div>
+  $('#mapPrev').innerHTML = priceTxt + (noDate ? `<div class="flag check" style="margin-top:10px;text-align:left">⚠ Keine Datums-Spalte erkannt – dann bekämen alle ${m.length} Teile das heutige Datum. Bitte oben bei „Datum“ die richtige Spalte wählen.</div>` : '') + `${skipTxt ? `<div class="muted" style="margin-top:10px;font-size:13px">Ohne Datum, daher übersprungen: ${skipTxt}</div>` : ''}<div class="muted" style="margin-top:10px;font-size:14px">${m.length} Positionen${parsed.multi ? ' von ' + kunden + ' Kunden' : ''} werden übernommen. Vorschau:</div>
     <table class="prev"><tr><th>Nummer</th><th>Kunde</th>${parsed.map.datum >= 0 ? '<th>Datum</th>' : '<th>Menge</th>'}</tr>${m.slice(0, 8).map((x) => `<tr><td>${esc(x.nummer)}</td><td>${esc(x.kunde)}</td><td>${parsed.map.datum >= 0 ? (x.datum ? fmtDate(x.datum) : '') : x.qty}</td></tr>`).join('')}</table>`;
 }
 
@@ -1987,7 +2030,7 @@ $('#mapUpload').onclick = async () => {
   { const m = Object.entries(renameMap()).find(([o]) => o.toLowerCase() === owner.toLowerCase()); if (m) owner = m[1]; }
   const msg = $('#upMsg');
   if (!owner) { msg.innerHTML = '<span class="err-msg">Bitte eintragen, wessen Liste das ist (z. B. Abdul).</span>'; return; }
-  const its = mappedItems().map((x) => ({ nummer: x.nummer, bez: x.bez, kunde: x.kunde, qty: x.qty, datum: x.datum }));
+  const its = mappedItems().map((x) => ({ nummer: x.nummer, bez: x.bez, kunde: x.kunde, qty: x.qty, datum: x.datum, ...(x.pbar ? { pbar: x.pbar } : {}), ...(x.pbank ? { pbank: x.pbank } : {}) }));
   if (!its.length) { msg.innerHTML = '<span class="err-msg">Keine Positionen zum Hochladen.</span>'; return; }
   if (isOff(owner)) { msg.textContent = `Die Liste „${owner}“ ist ausgeschaltet – Hochladen nicht möglich.`; return; }
   // Schutz: Datei gehört wahrscheinlich zu einer anderen Liste?
@@ -2086,7 +2129,34 @@ $('#logoutBtn').onclick = async () => {
 };
 
 // ---------- App-Start-Datum ----------
-function renderStart() { if (document.activeElement !== $('#startIn')) $('#startIn').value = appStart(); const c = checks['CFG|start']; $('#startMsg').textContent = c ? `Gesetzt von ${c.by} am ${dayTime(c.at)}` : 'Standard: 01.11.2026'; }
+// ---------- Ablauf des Zugangs ----------
+const TOK_WARN_TAGE = 14;
+function tokExpiry() { const c = checks['CFG|tokexp']; return (c && c.date) || ''; }
+function daysTo(iso) { const a = new Date(isoToday(0) + 'T00:00:00'), b = new Date(iso + 'T00:00:00'); return Math.round((b - a) / 864e5); }
+function renderTokBand() {
+  const band = $('#tokBand'); const d = tokExpiry();
+  if (!d || !cfg) { band.hidden = true; return; }
+  const n = daysTo(d);
+  if (n > TOK_WARN_TAGE) { band.hidden = true; return; }
+  band.className = n <= 3 ? 'red' : '';
+  band.textContent = n < 0 ? `⚠ Der Zugang ist seit ${-n} Tag${-n === 1 ? '' : 'en'} abgelaufen. Die Handys synchronisieren nicht mehr. Tippen für „Zugang erneuern“.`
+    : n === 0 ? '⚠ Der Zugang läuft HEUTE ab. Tippen für „Zugang erneuern“.'
+    : `⚠ Der Zugang läuft in ${n} Tag${n === 1 ? '' : 'en'} ab (${fmtDate(d)}). Bitte rechtzeitig erneuern – tippen.`;
+  band.hidden = false;
+}
+$('#tokBand').onclick = () => { show('liste'); $('#renewBox').hidden = false; $('#renewBox').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+$('#tokSave').onclick = () => {
+  const v = $('#tokIn').value; if (!v) return;
+  checks['CFG|tokexp'] = { date: v, by: cfg.name, at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(300);
+  $('#tokMsg').innerHTML = '<span class="ok-msg">Gespeichert ✓</span>';
+};
+// GitHub meldet das Ablaufdatum manchmal selbst mit – dann automatisch übernehmen
+function adoptTokenExpiry() {
+  const ex = self.Sync && Sync.tokenExpiry; if (!ex || !cfg) return;
+  const m = String(ex).match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return; const date = m[1] + '-' + m[2] + '-' + m[3];
+  if (tokExpiry() !== date) { checks['CFG|tokexp'] = { date, by: 'GitHub', at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); syncSoon(300); }
+}
+function renderStart() { renderTokBand(); if (document.activeElement !== $('#tokIn')) $('#tokIn').value = tokExpiry(); { const c = checks['CFG|tokexp']; $('#tokMsg').textContent = c ? `Eingetragen von ${c.by} am ${dayTime(c.at)}` : 'Noch kein Datum eingetragen.'; } if (document.activeElement !== $('#startIn')) $('#startIn').value = appStart(); const c = checks['CFG|start']; $('#startMsg').textContent = c ? `Gesetzt von ${c.by} am ${dayTime(c.at)}` : 'Standard: 01.11.2026'; }
 $('#startSave').onclick = async () => {
   const v = $('#startIn').value; if (!v) return;
   if (!(await confirmDlg(`App-Start auf den ${fmtLong(v)} setzen? Alles davor gilt dann für alle Handys als abgegeben.`))) return;
