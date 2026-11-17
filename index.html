@@ -170,7 +170,10 @@
   .kph input { margin-top: 6px; }
   .gpsinfo { font-size: 13px; color: var(--muted); margin-top: 6px; }
   #routeDlg img { width: 100%; max-height: 40vh; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
-  #dlg, #choiceDlg { z-index: 40; } #photoDlg, #routeDlg { z-index: 30; } #kDlg { z-index: 20; }
+  .hrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line, #2a2f3a); }
+  .hrow img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; flex: none; cursor: pointer; }
+  #histDlg .box { max-height: 85vh; overflow-y: auto; }
+  #dlg, #choiceDlg { z-index: 40; } #photoDlg, #routeDlg { z-index: 30; } #histDlg { z-index: 25; } #kDlg { z-index: 20; }
   .item.ready .chk { background: rgba(242,201,76,.18); border-color: var(--warn); color: var(--warn); font-size: 14px; }
   .item .who.da { color: var(--warn); }
   .bar { display: flex; } .bar i.da { background: var(--warn); }
@@ -399,6 +402,7 @@
   <div class="row"><button class="btn" id="shareClose">Schließen</button><button class="btn" id="shareCopy">Kopieren</button><button class="btn ok" id="shareSend">Senden</button></div></div></div>
 
 <div class="dlg" id="choiceDlg" hidden><div class="box"><div id="choiceText" style="font-size:17px;margin-bottom:16px"></div><div id="choiceBtns"></div></div></div>
+<div class="dlg" id="histDlg" hidden><div class="box"><h2 id="histTitle"></h2><div id="histBody"></div><div class="row" style="margin-top:12px"><button class="btn" id="histClose">Schließen</button></div></div></div>
 <div class="dlg" id="photoDlg" hidden><div class="box"><h2 id="photoTitle"></h2><img id="photoImg" alt=""><div id="photoCap" class="muted" style="font-size:14px;margin:8px 0 12px"></div>
   <div class="row"><button class="btn" id="photoNew">📷 Neues Foto</button><button class="btn primary" id="photoClose">Schließen</button></div></div></div>
 <input type="file" id="hoIn" class="vh" accept="image/*" capture="environment">
@@ -489,7 +493,7 @@ function rebuildItems() {
         continue;
       }
       const cc = c || {};
-      items.push({ ...x, owner, id, done: cc.n || 0, by: cc.by, at: cc.at, da: Math.max(cc.da || 0, cc.n || 0), daBy: cc.daBy || cc.by, daAt: cc.daAt || cc.at });
+      items.push({ ...x, owner, id, done: cc.n || 0, by: cc.by, at: cc.at, da: Math.max(cc.da || 0, cc.n || 0), daBy: cc.daBy || cc.by, daAt: cc.daAt || cc.at, ph: cc.ph, how: cc.how, daPh: cc.daPh, daHow: cc.daHow, log: cc.log });
     }
   }
 }
@@ -567,13 +571,14 @@ async function ensureConn() {
 }
 const mergeRet = (remote, local) => { const t = (x) => (x.v && x.v > (x.at || '') ? x.v : x.at || ''); const out = { ...remote }; for (const [k, v] of Object.entries(local || {})) if (!out[k] || t(v) > t(out[k])) out[k] = v; return out; };
 // "da" (kommissioniert) und "abgegeben" werden getrennt zusammengeführt – jeweils der neuere Stand gewinnt
+const mergeLog = (a, b) => { const m = new Map(); for (const e of [...(a || []), ...(b || [])]) m.set(e.t + '|' + e.at + '|' + e.by, e); return [...m.values()].sort((x, y) => (x.at || '').localeCompare(y.at || '')).slice(-30); };
 const mergeChecks = (remote, local) => {
   const out = { ...remote };
   for (const [k, v] of Object.entries(local || {})) {
     const r = out[k]; if (!r) { out[k] = v; continue; }
     if (k.startsWith('H|') || k.startsWith('CFG|')) { if ((v.at || '') > (r.at || '')) out[k] = v; continue; }
     const ab = (v.at || '') > (r.at || '') ? v : r; const da = (v.da > 0 && r.da > 0) ? ((v.daAt || '') < (r.daAt || '') ? v : r) : ((v.daAt || '') > (r.daAt || '') ? v : r); // wer es zuerst bereitgelegt hat, bleibt stehen
-    out[k] = { ...ab, n: ab.n, by: ab.by, at: ab.at, da: da.da, daBy: da.daBy, daAt: da.daAt };
+    out[k] = { ...ab, n: ab.n, by: ab.by, at: ab.at, ph: ab.ph, how: ab.how, da: da.da, daBy: da.daBy, daAt: da.daAt, daPh: da.daPh, daHow: da.daHow, log: mergeLog(v.log, r.log) };
   }
   return out;
 };
@@ -631,7 +636,7 @@ function sync() {
         for (const o of Object.keys(lists)) if (!names[o]) { delete lists[o]; changed = true; }
       }
       { const before = cfg.name; applyRenames(); if (cfg.name !== before) changed = true; }
-      syncErr = ''; adoptTokenExpiry(); lastSync = nowIso(); store.set('lastSync', lastSync);
+      syncErr = ''; adoptTokenExpiry(); flushPhotos(); cleanupScanPhotos(); lastSync = nowIso(); store.set('lastSync', lastSync);
       persist();
       if (changed) refresh();
     } catch (e) {
@@ -653,16 +658,62 @@ window.addEventListener('online', () => sync());
 
 // Haken setzen (für alle sichtbar)
 // Abgegeben (beim Kunden) – zählt auch als "da"
-function setCheck(it, n) {
-  const c = checks[it.id] || {}; const now = nowIso();
-  checks[it.id] = { ...c, n, by: cfg.name, at: now, ...(n > (c.da || 0) ? { da: n, daBy: c.daBy || cfg.name, daAt: c.daAt || now } : {}) };
+// meta: { how: 'scan' | 'tipp', ph: Fotoschlüssel }; jeder Schritt landet im Verlauf (log)
+const addLog = (c, e) => [...(c.log || []), e].slice(-30);
+function setCheck(it, n, meta = {}) {
+  const c = checks[it.id] || {}; const now = nowIso(); const e = { t: 'ab', by: cfg.name, at: now, how: meta.how || '', ph: meta.ph || '' };
+  checks[it.id] = { ...c, n, by: cfg.name, at: now, ph: e.ph, how: e.how, ...(n > (c.da || 0) ? { da: n, daBy: c.daBy || cfg.name, daAt: c.daAt || now } : {}), log: addLog(c, e) };
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
 }
 // Ist da (im Lager kommissioniert)
-function setDa(it, da) {
-  const c = checks[it.id] || {};
-  checks[it.id] = { ...c, da, daBy: cfg.name, daAt: nowIso() };
+function setDa(it, da, meta = {}) {
+  const c = checks[it.id] || {}; const now = nowIso(); const e = { t: 'da', by: cfg.name, at: now, how: meta.how || '', ph: meta.ph || '' };
+  checks[it.id] = { ...c, da, daBy: cfg.name, daAt: now, daPh: e.ph, daHow: e.how, log: addLog(c, e) };
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+// letzten Schritt zurücknehmen (nur im Scannen-Reiter), wird mit Name + Uhrzeit protokolliert
+function undoStep(it) {
+  const c = checks[it.id] || {}; const now = nowIso(); const n = c.n || 0, da = Math.max(c.da || 0, n);
+  if (n > 0) checks[it.id] = { ...c, n: n - 1, by: cfg.name, at: now, ph: '', how: '', da, log: addLog(c, { t: 'undo', was: 'ab', by: cfg.name, at: now }) };
+  else if (da > 0) checks[it.id] = { ...c, da: da - 1, daBy: cfg.name, daAt: now, daPh: '', daHow: '', log: addLog(c, { t: 'undo', was: 'da', by: cfg.name, at: now }) };
+  else return;
+  dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+// ---------- Scan-Fotos (Beweis) ----------
+const SCAN_FOTO_TAGE = 90;
+const phQueue = () => store.get('phq', []);
+function saveScanPhoto(it, data) {
+  if (!data) return '';
+  const pk = 'scan/' + isoToday(0) + '/S' + fnv(it.id) + Date.now().toString(36);
+  photoMem[pk] = data; idb.set(pk, data);
+  store.set('phq', [...phQueue(), pk]); flushPhotos();
+  return pk;
+}
+let flushing = false;
+async function flushPhotos() {
+  if (flushing || !cfg) return; flushing = true;
+  try {
+    for (const pk of phQueue()) {
+      const data = photoMem[pk] || (await idb.get(pk)); if (!data) { store.set('phq', phQueue().filter((x) => x !== pk)); continue; }
+      await ensureConn(); await Sync.writeFile(conn, 'photos/' + pk + '.enc', { img: data, at: nowIso(), by: cfg.name }, null, (r, l) => l, 'Scanfoto');
+      store.set('phq', phQueue().filter((x) => x !== pk));
+    }
+  } catch (e) {} finally { flushing = false; }
+}
+// Scan-Fotos älter als 3 Monate löschen (Ordner pro Tag); Fortschritt ist für alle gespeichert
+let cleaning = false;
+async function cleanupScanPhotos() {
+  if (cleaning || !cfg || !conn) return; const last = store.get('cleanDay', ''); if (last === isoToday(0)) return; cleaning = true;
+  try {
+    const c = checks['CFG|cleanup']; let d = (c && c.upto) || '2026-11-16'; const end = addDays(isoToday(0), -SCAN_FOTO_TAGE - 1);
+    for (let n = 0; d < end && n < 30; n++) {
+      d = addDays(d, 1);
+      const list = await Sync.listDir(conn, 'photos/scan/' + d, false);
+      for (const f of Array.isArray(list) ? list : []) { try { await Sync.deleteFile(conn, 'photos/scan/' + d + '/' + f.name, f.sha); } catch (e) {} }
+      checks['CFG|cleanup'] = { upto: d, by: cfg.name, at: nowIso() }; dirty.checks = (dirty.checks || 0) + 1;
+    }
+    store.set('cleanDay', isoToday(0)); persist(); syncSoon(1000);
+  } catch (e) {} finally { cleaning = false; }
 }
 function resetCheck(it) { checks[it.id] = { n: 0, by: cfg.name, at: nowIso(), da: 0, daBy: cfg.name, daAt: nowIso() }; dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon(); }
 const OFFEN_TAGE = 4;   // Scanner schaut nur die letzten 4 Tage an; Älteres gilt als "nicht in deiner Liste"
@@ -1053,10 +1104,26 @@ function showResult(hits, ctx) {
   const sorted = hits.slice().sort((a, b) => (b.score >= best - 5) - (a.score >= best - 5) || (isDone(a.i) - isDone(b.i)) || b.score - a.score);
   const uniq = []; for (const h of sorted) if (!uniq.some((u) => u.i === h.i)) uniq.push(h);
   current = { hits: uniq.map((h) => ({ ...h, id: items[h.i].id })), sel: items[uniq[0].i].id, ctx };
+  const openTop = uniq.filter((h) => h.score >= best - 5 && !isDone(h.i));
+  current.needPick = new Set(openTop.map((h) => items[h.i].owner + '|' + items[h.i].kunde)).size >= 2;
   renderResult(); feedback(); setStatus('');
 }
 const idxOf = (id) => items.findIndex((x) => x.id === id);
+// gleiche Nummer bei mehreren Kunden offen: Kunde muss aktiv angetippt werden
+function renderPick() {
+  const r = $('#result'); const best = Math.max(...current.hits.map((h) => h.score));
+  const cand = current.hits.filter((h) => h.score >= best - 5).map((h) => idxOf(h.id)).filter((j) => j >= 0 && !isDone(j));
+  r.className = 'warn';
+  r.innerHTML = `<div class="kunde" style="font-size:21px">⚠ Mehrere Kunden haben diese Nummer</div>
+    <div class="meta" style="font-size:16px;margin-top:4px">Nr. <b>${esc(items[cand[0]].nummer)}</b> – bitte den <b>richtigen Kunden antippen</b>:</div>
+    <div class="pick">${cand.map((j) => { const x = items[j]; const q = x.qty || 1; return `<button class="btn" data-pk="${esc(x.id)}" style="padding:14px"><b>${esc(x.kunde)}</b>&nbsp;/ ${esc(x.owner)}${x.datum !== activeDate ? ' · ' + fmtDate(x.datum) : ''}${x.bez ? ' · ' + esc(x.bez) : ''} · ${(x.da || 0) >= q ? '📦 da' : 'offen'}</button>`; }).join('')}</div>
+    <div class="row actions"><button class="btn" id="rNext">Abbrechen</button></div>`;
+  r.hidden = false; warnSound();
+  r.querySelectorAll('[data-pk]').forEach((b) => b.onclick = () => { current.sel = b.dataset.pk; current.picked = true; renderResult(); });
+  $('#rNext').onclick = nextScan; r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 function renderResult() {
+  if (current.needPick && !current.picked) return renderPick();
   const i = idxOf(current.sel); if (i < 0) { hideResult(); return; }
   const it = items[i]; const r = $('#result'); const done = isDone(i);
   const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const marke = brandOf(it);
@@ -1065,6 +1132,7 @@ function renderResult() {
   const eans = eansOf(k);
   const learnTxt = [marke, p && p.count ? `schon ${p.count}× gescannt` : 'zum ersten Mal gescannt', eans.length ? `Barcode bekannt (${eans[eans.length - 1]})` : current.ctx && current.ctx.barcode ? `Barcode ${current.ctx.barcode} wird gelernt` : '', top && top[1] > 1 ? `meist für ${top[0]}` : ''].filter(Boolean).join(' · ');
   const q = it.qty || 1; const isDa = (it.da || 0) >= q; const other = it.datum !== activeDate;
+  const scanned = !!(current.ctx && current.ctx.thumb); const canAb = !done && scanned && (it.da || 0) > (it.done || 0);
   r.className = done ? 'done' : '';
   r.innerHTML = `
     <img class="thumb" data-ph="${esc(k)}" hidden alt="">
@@ -1078,11 +1146,14 @@ function renderResult() {
     ${(() => { const h = current.hits.find((x) => x.id === current.sel); return h && !h.exact && h.score < 80 && current.ctx ? '<div class="flag check">Bitte prüfen – nicht ganz sicher erkannt</div> ' : ''; })()}
     ${done ? `<div class="flag" style="background:var(--ok);color:#04210f">✓ Schon abgegeben${it.by ? ' von ' + esc(it.by) + ' am ' + dayTime(it.at) : ''}</div>` : ''}
     ${alts.length ? `<div class="muted" style="margin-top:8px;font-size:14px;clear:both">Oder meintest du:</div><div class="alts">${alts.map((j) => `<button class="btn small" data-alt="${esc(items[j].id)}">${esc(items[j].kunde)} / ${esc(items[j].owner)} · ${esc(items[j].nummer)}${items[j].datum !== activeDate ? ' · ' + fmtDate(items[j].datum) : ''}</button>`).join('')}</div>` : ''}
+    ${!done && !canAb && (it.da || 0) <= (it.done || 0) ? '<div class="muted" style="font-size:14px;margin-top:6px;clear:both">Schritt 1: „Ist da“. Abgeben geht beim nächsten Scan.</div>' : ''}
+    ${!done && (it.da || 0) > (it.done || 0) && !scanned ? '<div class="flag check" style="clear:both">✓ Abgeben geht nur per <b>Kamera-Scan</b> – bitte das Teil scannen.</div>' : ''}
     <div class="row actions" style="clear:both">
       ${done ? '' : isDa ? '' : '<button class="btn da" id="rDa">📦 Ist da</button>'}
-      ${done ? '' : '<button class="btn ok" id="rDone">✓ Abgegeben</button>'}
+      ${canAb ? '<button class="btn ok" id="rDone">✓ Abgegeben</button>' : ''}
       <button class="btn" id="rNext">Weiter</button>
     </div>
+    ${((it.da || 0) > 0 || (it.done || 0) > 0) && !it.virtual ? '<button class="btn small" style="width:100%;margin-top:8px" id="rUndo">↺ Rückgängig (letzten Schritt)</button>' : ''}
     <button class="btn small ${eans.length ? 'bcok' : 'bcmiss'}" style="width:100%;margin-top:8px" id="rBc">🏷 ${eans.length ? 'Barcode ✓ (' + eans.length + ') – weiteren scannen' : 'Barcode fehlt – jetzt scannen'}</button>`;
   r.hidden = false; fillThumbs(r);
   $('#rBc').onclick = () => startBarcode(k, it.nummer, it, 'result');
@@ -1091,8 +1162,17 @@ function renderResult() {
     const j = idxOf(current.sel); if (j < 0) return nextScan();
     const x = items[j]; const hit = current.hits.find((h) => h.id === current.sel);
     if (!current.learned) { learn(x, current.ctx ? { ...current.ctx, hit } : null); current.learned = true; }
-    if (kind === 'da') setDa(x, Math.min((x.da || 0) + 1, x.qty || 1)); else setCheck(x, Math.min((x.done || 0) + 1, x.qty || 1));
+    const scanned = !!(current.ctx && current.ctx.thumb);
+    if (kind === 'ab' && (!scanned || (x.da || 0) <= (x.done || 0))) return;
+    const meta = { how: scanned ? 'scan' : 'tipp', ph: scanned ? saveScanPhoto(x, current.ctx.thumb) : '' };
+    if (kind === 'da') setDa(x, Math.min((x.da || 0) + 1, x.qty || 1), meta); else setCheck(x, Math.min((x.done || 0) + 1, x.qty || 1), meta);
     nextScan();
+  };
+  if ($('#rUndo')) $('#rUndo').onclick = async () => {
+    const x = items[idxOf(current.sel)]; if (!x) return;
+    const what = (x.done || 0) > 0 ? '„Abgegeben“' : '„Ist da“';
+    if (!(await confirmDlg(`${what} bei ${x.nummer} (${x.kunde}) zurücknehmen? Das wird mit deinem Namen gespeichert.`))) return;
+    undoStep(x); nextScan();
   };
   if ($('#rDone')) $('#rDone').onclick = () => act('ab');
   if ($('#rDa')) $('#rDa').onclick = () => act('da');
@@ -1539,37 +1619,15 @@ function renderKunden() {
     .sort((a, b) => (a.done === a.ix.length) - (b.done === b.ix.length) || a.kunde.localeCompare(b.kunde, 'de') || a.owner.localeCompare(b.owner));
   $('#kundenList').innerHTML = arr.length ? arr.map((g) => `
     <div class="kgroup">
-      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span><span class="kname" data-ck="${esc(g.owner + '|' + g.kunde)}">${esc(g.kunde)}</span>${multi ? `<span class="tag">${esc(g.owner)}</span>` : ''}</span><span class="r">${hasPlace(g.owner + '|' + g.kunde) ? `<button class="mapbtn" data-route="${esc(g.owner + '|' + g.kunde)}" aria-label="Route">📍</button>` : ''}<span class="cnt">${g.ready ? `📦${g.ready} · ` : ''}✓${g.done} / ${g.ix.length}</span>${(() => { const hk = hoKey(g.owner, g.kunde, activeDate); const hp = checks[hk] && checks[hk].photo; return (hp || g.done === g.ix.length) ? `<button class="hobtn ${hp ? 'has' : ''}" data-ho="${esc(hk)}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Übergabe-Foto">📷${hp ? '' : '+'}</button>` : ''; })()}${g.done < g.ix.length ? `<button class="allbtn" data-all="${esc(g.ix.map((i) => items[i].id).join('\n'))}" data-k="${esc(g.kunde)}" data-hk="${esc(hoKey(g.owner, g.kunde, activeDate))}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Alles erhalten">✓</button>` : ''}</span></div>
+      <div class="khead ${g.done === g.ix.length ? 'full' : ''}"><span><span class="kname" data-ck="${esc(g.owner + '|' + g.kunde)}">${esc(g.kunde)}</span>${multi ? `<span class="tag">${esc(g.owner)}</span>` : ''}</span><span class="r">${hasPlace(g.owner + '|' + g.kunde) ? `<button class="mapbtn" data-route="${esc(g.owner + '|' + g.kunde)}" aria-label="Route">📍</button>` : ''}<span class="cnt">${g.ready ? `📦${g.ready} · ` : ''}✓${g.done} / ${g.ix.length}</span>${(() => { const hk = hoKey(g.owner, g.kunde, activeDate); const hp = checks[hk] && checks[hk].photo; return (hp || g.done === g.ix.length) ? `<button class="hobtn ${hp ? 'has' : ''}" data-ho="${esc(hk)}" data-t="${esc(g.kunde + ' / ' + g.owner)}" aria-label="Übergabe-Foto">📷${hp ? '' : '+'}</button>` : ''; })()}</span></div>
       <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i><i class="da" style="width:${(100 * g.ready / g.ix.length).toFixed(0)}%"></i></div>
       ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const q = it.qty || 1; const ready = !d && (it.da || 0) >= q; const part = !d && !ready && ((it.done || 0) > 0 || (it.da || 0) > 0); const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const mk = brandOf(it);
         return `<div class="item ${d ? 'done' : ''} ${ready ? 'ready' : ''} ${part ? 'part' : ''}" data-id="${esc(it.id)}"><div class="chk">${d ? '✓' : ready ? '📦' : part ? ((it.done || 0) + '/' + q) : ''}</div>
-          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ abgegeben · ${esc(it.by)} · ${hhmm(it.at)}</div>` : ''}${!d && (it.da || 0) > 0 && it.daBy ? `<div class="who da">📦 ${q > 1 ? (it.da + '/' + q + ' ') : ''}da · ${esc(it.daBy)} · ${hhmm(it.daAt)}</div>` : ''}</div>
+          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ abgegeben · ${esc(it.by)} · ${hhmm(it.at)}${it.ph ? ' 📷' : ''}</div>` : ''}${!d && (it.da || 0) > 0 && it.daBy ? `<div class="who da">📦 ${q > 1 ? (it.da + '/' + q + ' ') : ''}da · ${esc(it.daBy)} · ${hhmm(it.daAt)}${it.daHow === 'tipp' ? ' ⌨' : it.daPh ? ' 📷' : ''}</div>` : ''}</div>
           ${p && p.photo ? `<img class="th" data-ph="${esc(k)}" hidden alt="">` : ''}</div>`; }).join('')}
     </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${!items.length ? 'Noch keine Liste im Pool.' : q ? 'Nichts gefunden.' : 'Keine Bestellungen an diesem Tag.'}</div>`;
-  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = async () => {
-    const it = items[idxOf(el.dataset.id)]; if (!it) return; const q = it.qty || 1;
-    const opts = [];
-    if ((it.da || 0) < q && (it.done || 0) < q) opts.push({ label: q > 1 ? `📦 Ist da (${(it.da || 0) + 1} von ${q})` : '📦 Ist da', value: 'da', cls: 'da' });
-    if ((it.done || 0) < q) opts.push({ label: q > 1 ? `✓ Abgegeben (${(it.done || 0) + 1} von ${q})` : '✓ Abgegeben', value: 'ab', cls: 'ok' });
-    if ((it.da || 0) > 0 || (it.done || 0) > 0) opts.push({ label: '↺ Zurücksetzen (wieder offen)', value: 'reset' });
-    opts.push({ label: 'Abbrechen', value: '' });
-    const status = (it.done || 0) >= q ? `✓ abgegeben von ${it.by} um ${hhmm(it.at)}` : (it.da || 0) > 0 ? `📦 da (${it.daBy}, ${hhmm(it.daAt)})` : 'noch offen';
-    const v = await choiceDlg(`${it.nummer} · ${it.kunde} – ${status}`, opts);
-    if (v === 'da') setDa(it, Math.min((it.da || 0) + 1, q));
-    else if (v === 'ab') setCheck(it, Math.min((it.done || 0) + 1, q));
-    else if (v === 'reset' && (await confirmDlg(`${it.nummer} (${it.kunde}) wirklich wieder auf offen setzen?`))) resetCheck(it);
-  });
-  $('#kundenList').querySelectorAll('.allbtn').forEach((b) => b.onclick = async (e) => {
-    e.stopPropagation();
-    const ids = b.dataset.all.split('\n'); const open = ids.map(idxOf).filter((i) => i >= 0 && !isDone(i));
-    if (!open.length) return;
-    const choice = await choiceDlg(`${b.dataset.k} hat alles erhalten? Die ${open.length} offenen ${open.length === 1 ? 'Teil wird' : 'Teile werden'} als abgegeben markiert.`,
-      [{ label: '📷 Mit Foto', value: 'foto', cls: 'primary' }, { label: '✓ Ohne Foto', value: 'ok', cls: 'ok' }, { label: 'Abbrechen', value: '' }]);
-    if (!choice) return;
-    const at = nowIso(); for (const i of open) { const c = checks[items[i].id] || {}; const q = items[i].qty || 1; checks[items[i].id] = { ...c, n: q, by: cfg.name, at, da: q, daBy: c.daBy || cfg.name, daAt: c.daAt || at }; }
-    dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
-    if (choice === 'foto') takeHandoverPhoto(b.dataset.hk, b.dataset.t);
-  });
+  // Nur ansehen: Abhaken geht ausschließlich im Scannen-Reiter
+  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = () => { const it = items[idxOf(el.dataset.id)]; if (it) showHistory(it); });
   $('#kundenList').querySelectorAll('.kname').forEach((el) => el.onclick = (e) => { e.stopPropagation(); openKunde(el.dataset.ck); });
   $('#kundenList').querySelectorAll('.mapbtn').forEach((b) => b.onclick = (e) => { e.stopPropagation(); askRoute(b.dataset.route); });
   $('#kundenList').querySelectorAll('.hobtn').forEach((b) => b.onclick = (e) => {
@@ -1578,6 +1636,23 @@ function renderKunden() {
   });
   fillThumbs($('#kundenList'));
 }
+
+// ---------- Verlauf eines Teils (wer, wann, Foto) ----------
+const LOGTXT = { da: '📦 Ist da', ab: '✓ Abgegeben', undo: '↺ Rückgängig' };
+function showHistory(it) {
+  let log = (it.log || []).slice();
+  if (!log.length) { // alte Einträge ohne Verlauf
+    if ((it.da || 0) > 0 && it.daBy) log.push({ t: 'da', by: it.daBy, at: it.daAt });
+    if ((it.done || 0) > 0 && it.by) log.push({ t: 'ab', by: it.by, at: it.at });
+  }
+  const old = (e) => e.ph && e.at && dayNum(isoToday(0)) - dayNum(localDay(e.at)) > SCAN_FOTO_TAGE;
+  $('#histTitle').textContent = `${it.nummer} · ${it.kunde}`;
+  $('#histBody').innerHTML = (log.length ? log.map((e) => `<div class="hrow"><div><b>${LOGTXT[e.t] || e.t}</b>${e.t === 'undo' ? ` <span class="muted">(${e.was === 'ab' ? 'Abgegeben' : 'Ist da'} zurückgenommen)</span>` : ''}<div class="muted" style="font-size:14px">${esc(e.by || '')} · ${e.at ? dayTime(e.at) : ''}${e.how === 'tipp' ? ' · ⌨ eingetippt (kein Foto)' : e.how === 'scan' ? ' · 📷 gescannt' : ''}</div></div>${e.ph && !old(e) ? `<img data-ph="${esc(e.ph)}" data-big="1" hidden alt="">` : old(e) ? '<span class="muted" style="font-size:12px">Foto gelöscht (älter als 3 Monate)</span>' : ''}</div>`).join('')
+    : '<div class="muted">Noch nichts gescannt.</div>') + '<div class="muted" style="font-size:13px;margin-top:10px">Abhaken geht nur im Reiter „Scannen“.</div>';
+  $('#histDlg').hidden = false; fillThumbs($('#histBody'));
+  $('#histBody').querySelectorAll('img[data-big]').forEach((im) => im.onclick = () => { $('#photoTitle').textContent = it.nummer + ' · ' + it.kunde; $('#photoImg').src = im.src; $('#photoCap').textContent = ''; $('#photoNew').hidden = true; $('#photoDlg').hidden = false; });
+}
+$('#histClose').onclick = () => { $('#histDlg').hidden = true; };
 
 // ---------- Offene Teile als Nachricht ----------
 function openText() {
