@@ -136,6 +136,9 @@
   #result.assign { border-color: var(--warn); }
   #result .pick { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; margin-top: 8px; }
   #result .pick button { text-align: left; justify-content: flex-start; }
+  #sugg { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  #sugg button { text-align: left; justify-content: flex-start; padding: 12px; }
+  #sugg .s-k { color: var(--muted, #9aa3b2); font-weight: 400; }
   .flag.check { background: var(--warn); }
   #modeBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #6d3fd1; color: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-weight: 800; }
   #modeBar .btn { background: rgba(255,255,255,.18); color: #fff; }
@@ -264,6 +267,7 @@
       <input type="text" id="manualIn" placeholder="Nummer eintippen, z. B. 26100" autocomplete="off" autocapitalize="characters" style="flex:2">
       <button class="btn" type="submit" style="flex:none">Suchen</button>
     </form>
+    <div id="sugg" hidden></div>
   </section>
 
   <!-- KUNDEN -->
@@ -594,8 +598,9 @@ function mergeMemory(remote, local) {
     const r = out.parts[k];
     if (!r) { out.parts[k] = l; continue; }
     const kunden = { ...(r.kunden || {}) }; for (const [n, c] of Object.entries(l.kunden || {})) kunden[n] = Math.max(kunden[n] || 0, c);
+    const words = { ...(r.words || {}) }; for (const [n, c] of Object.entries(l.words || {})) words[n] = Math.max(words[n] || 0, c);
     out.parts[k] = { ...r, ...l, marke: l.marke || r.marke, bez: l.bez || r.bez, photo: !!(l.photo || r.photo), count: Math.max(r.count || 0, l.count || 0), kunden,
-      ean: [...new Set([...(r.ean || []), ...(l.ean || [])])], last: (l.last || '') > (r.last || '') ? l.last : r.last };
+      ean: [...new Set([...(r.ean || []), ...(l.ean || [])])], words, last: (l.last || '') > (r.last || '') ? l.last : r.last };
   }
   return out;
 }
@@ -677,6 +682,11 @@ function undoStep(it) {
   if (n > 0) checks[it.id] = { ...c, n: n - 1, by: cfg.name, at: now, ph: '', how: '', da, log: addLog(c, { t: 'undo', was: 'ab', by: cfg.name, at: now }) };
   else if (da > 0) checks[it.id] = { ...c, da: da - 1, daBy: cfg.name, daAt: now, daPh: '', daHow: '', log: addLog(c, { t: 'undo', was: 'da', by: cfg.name, at: now }) };
   else return;
+  dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+function undoDa(it) {
+  const c = checks[it.id] || {}; const now = nowIso(); const da = Math.max(c.da || 0, c.n || 0); if (da <= (c.n || 0)) return;
+  checks[it.id] = { ...c, da: da - 1, daBy: cfg.name, daAt: now, daPh: '', daHow: '', log: addLog(c, { t: 'undo', was: 'da', by: cfg.name, at: now, how: 'liste' }) };
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
 }
 // ---------- Scan-Fotos (Beweis) ----------
@@ -766,6 +776,7 @@ function learn(it, ctx) {
     if (brand) { p.marke = brand; const pf = Brands.prefix(it.nummer); if (pf) memory.prefix[pf] = brand; }
     if (ctx.barcode) { const b = Matcher.norm(ctx.barcode); const cur = memory.ean[b]; if (!cur || cur === k) { memory.ean[b] = k; (memory.eanAt || (memory.eanAt = {}))[b] = { at: nowIso(), by: cfg.name }; } }
     if (ctx.hit && !ctx.hit.exact && ctx.hit.cand) memory.ocr[Matcher.fuzzy(ctx.hit.cand)] = k;
+    if (ctx.text) learnLabel(k, p, ctx.text);
     if (ctx.thumb && !p.photo) {
       p.photo = true; photoMem[k] = ctx.thumb; idb.set(k, ctx.thumb);
       ensureConn().then(() => Sync.writeFile(conn, 'photos/' + k + '.enc', { img: ctx.thumb, at: nowIso(), by: cfg.name }, null, (r, l) => l, 'Foto ' + it.nummer)).catch(() => {});
@@ -773,6 +784,35 @@ function learn(it, ctx) {
   }
   if (!p.marke) p.marke = Brands.fromNumber(it.nummer, memory.prefix);
   dirty.memory = (dirty.memory || 0) + 1;
+}
+// Etikett lernen: (1) fast richtige Lesungen der Nummer als Lesefehler merken, (2) typische Wörter auf dem Etikett merken
+const STOPW = new Set(['MADE', 'IN', 'GERMANY', 'CHINA', 'POLAND', 'EAN', 'PCS', 'QTY', 'NET', 'ART', 'NR', 'NO', 'REF', 'OE', 'THE', 'AND', 'FOR', 'UND', 'DER', 'DIE', 'DAS', 'MIT', 'WWW', 'COM']);
+function labelWords(text) {
+  const out = new Set();
+  for (const w of String(text || '').toUpperCase().split(/[^A-Z0-9ÄÖÜ]+/)) { const n = Matcher.norm(w); if (n.length >= 4 && n.length <= 16 && !STOPW.has(n) && !/^\d+$/.test(n)) out.add(n); }
+  return [...out];
+}
+function lev2(a, b) { const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; } return prev[n]; }
+function learnLabel(k, p, text) {
+  const fk = Matcher.fuzzy(k);
+  for (const c of Matcher.candidates(text)) { const f = Matcher.fuzzy(c); if (f.length >= 5 && f !== fk && Math.abs(f.length - fk.length) <= 2 && lev2(f, fk) <= 2 && !memory.ocr[f]) memory.ocr[f] = k; }
+  const w = p.words || (p.words = {}); for (const x of labelWords(text)) if (x !== k) w[x] = (w[x] || 0) + 1;
+  const keep = Object.entries(w).sort((a, b) => b[1] - a[1]).slice(0, 16); p.words = Object.fromEntries(keep);
+}
+// Teil am Etikett wiedererkennen, wenn die Nummer selbst nicht lesbar ist (nur Wörter, die typisch für genau dieses Teil sind)
+let dfCache = null, dfAt = 0;
+function labelDf() { if (!dfCache || Date.now() - dfAt > 30000) { dfCache = {}; for (const pp of Object.values(memory.parts)) for (const x of Object.keys(pp.words || {})) dfCache[x] = (dfCache[x] || 0) + 1; dfAt = Date.now(); } return dfCache; }
+function labelHits(text, keep = onDay) {
+  const toks = new Set(labelWords(text)); if (toks.size < 2) return [];
+  const df = labelDf();
+  const hits = [];
+  items.forEach((it, i) => {
+    if (!keep(it)) return; const pp = memory.parts[Matcher.norm(it.nummer)]; if (!pp || !pp.words) return;
+    const good = Object.entries(pp.words).filter(([x, n]) => n >= 2 && df[x] <= 2 && toks.has(x));
+    if (good.length >= 3) hits.push({ i, score: 55 + good.length, exact: false, cand: '' });
+  });
+  return hits.sort((a, b) => b.score - a.score);
 }
 // gelernte Lesefehler / Barcodes zuerst prüfen
 function learnedHits(text, keep = onDay) {
@@ -825,6 +865,7 @@ function getWorker() {
   return worker;
 }
 function ocr(bytes, psm) {
+  if (bytes && bytes.byteLength === 0) return Promise.resolve({ text: '' }); // leeres Bild (Kamera kurz weg)
   return new Promise((res, rej) => {
     const id = ++reqId;
     // hängt die Texterkennung (z. B. nach dem Zurückkehren in die App), nach 10 s neu starten
@@ -839,7 +880,8 @@ function grab(src, sx, sy, sw, sh, maxW) {
   cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
   const ctx = cv.getContext('2d', { willReadFrequently: true });
   ctx.filter = 'grayscale(1) contrast(1.25)'; ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height); ctx.filter = 'none';
-  return new Promise((res) => cv.toBlob((b) => b.arrayBuffer().then(res), 'image/jpeg', 0.92));
+  if (!cv.width || !cv.height) return Promise.resolve(new ArrayBuffer(0));
+  return new Promise((res) => cv.toBlob((b) => (b ? b.arrayBuffer().then(res) : res(new ArrayBuffer(0))), 'image/jpeg', 0.92));
 }
 // kleines Farbfoto vom Karton (für die Liste)
 function thumb(src, sx, sy, sw, sh) {
@@ -997,7 +1039,7 @@ async function loop() {
       const [x, y, w, h] = frameRect();
       if (!hits.length) {
         text = (await ocr(await grab(video, x, y, w, h, 1100))).text || '';
-        hits = learnedHits(text); if (!hits.length) hits = Matcher.match(text, index); if (!hits.length) hits = wordHits(text);
+        hits = learnedHits(text); if (!hits.length) hits = Matcher.match(text, index); if (!hits.length) hits = wordHits(text); if (!hits.length) hits = labelHits(text);
       }
       if (paused || !stream || gen !== loopGen) break;
       if (!hits.length) {
@@ -1059,7 +1101,7 @@ $('#photo').onchange = async (e) => {
     }
     if (!hits.length) {
       text = (await ocr(await grab(img, 0, 0, w, h, 1600), '11')).text; hits = learnedHits(text); if (!hits.length) hits = Matcher.match(text, index);
-      if (!hits.length) { const t2 = (await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text; hits = Matcher.match(t2, index); if (!hits.length) hits = wordHits(text + '\n' + t2); text += '\n' + t2; }
+      if (!hits.length) { const t2 = (await ocr(await grab(img, 0, 0, w, h, 2000), '3')).text; hits = Matcher.match(t2, index); if (!hits.length) hits = wordHits(text + '\n' + t2); if (!hits.length) hits = labelHits(text + '\n' + t2); text += '\n' + t2; }
     }
     const side = Math.min(w, h) * 0.8; const th = thumb(img, (w - side) / 2, (h - side) / 2, side, side);
     if (hits.length) showResult(hits, { barcode: codes[0], text, thumb: th });
@@ -1071,9 +1113,28 @@ $('#photo').onchange = async (e) => {
   } catch (err) { setStatus('Foto konnte nicht gelesen werden: ' + err.message); }
 };
 
+// ---------- Vorschläge beim Eintippen (Nummer beginnt mit …; Teile der letzten Tage wie beim Scannen) ----------
+function renderSugg() {
+  const box = $('#sugg'); const nq = Matcher.norm($('#manualIn').value);
+  if (nq.length < 2 || (mode !== 'pick' && mode !== 'retoure')) { box.hidden = true; box.innerHTML = ''; return; }
+  const lim = addDays(isoToday(0), -OFFEN_TAGE);
+  const res = [];
+  items.forEach((it, i) => { if ((mode === 'retoure' || onDay(it) || (it.datum || '') >= lim) && Matcher.norm(it.nummer).startsWith(nq)) res.push(i); });
+  res.sort((a, b) => (items[b].datum || '').localeCompare(items[a].datum || '') || items[a].nummer.localeCompare(items[b].nummer));
+  const show = res.slice(0, 8);
+  if (!show.length) { box.hidden = false; box.innerHTML = '<div class="muted" style="font-size:14px">Keine passende Nummer.</div>'; return; }
+  box.innerHTML = show.map((i) => { const x = items[i]; const q = x.qty || 1; const st = (x.done || 0) >= q ? '✓' : (x.da || 0) >= q ? '📦' : ''; return `<button class="btn" data-si="${esc(x.id)}"><b>${esc(x.nummer)}</b>&nbsp;<span class="s-k">· ${esc(x.kunde)}${x.datum !== activeDate ? ' · ' + fmtDate(x.datum) : ''}${x.bez ? ' · ' + esc(x.bez) : ''} ${st}</span></button>`; }).join('')
+    + (res.length > show.length ? `<div class="muted" style="font-size:13px">… und ${res.length - show.length} weitere – weiter tippen.</div>` : '');
+  box.hidden = false;
+  box.querySelectorAll('[data-si]').forEach((b) => b.onclick = () => {
+    const i = idxOf(b.dataset.si); if (i < 0) return; pauseLoop(); $('#manualIn').blur(); box.hidden = true;
+    if (mode === 'retoure') showRetoure([{ i, score: 200, exact: true }], null); else showResult([{ i, score: 200, exact: true }], null);
+  });
+}
+$('#manualIn').addEventListener('input', renderSugg);
 // ---------- Eintippen ----------
 $('#manual').onsubmit = (e) => {
-  e.preventDefault();
+  e.preventDefault(); $('#sugg').hidden = true;
   const q = $('#manualIn').value.trim(); if (!q) return;
   if (mode === 'barcode') { if (/^\d{8,14}$/.test(q.replace(/\s/g, ''))) { $('#manualIn').value = ''; onBarcodeFound(q.replace(/\s/g, '')); } else setStatus('Bitte nur die Ziffern unter dem Barcode eintippen (8–14 Stellen).'); return; }
   if (mode === 'lookup') { mode = 'pick'; renderMode(); show('teile'); $('#teileQ').value = q; renderTeile(); $('#manualIn').value = ''; return; }
@@ -1467,7 +1528,7 @@ function warnSound() {
   try { if (!audioCtx) return; [0, 0.22].forEach((t) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'square'; o.frequency.value = 220; g.gain.value = 0.12; o.connect(g); g.connect(audioCtx.destination); o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.16); }); } catch (e) {}
 }
 function hideResult() { $('#result').hidden = true; current = null; }
-function nextScan() { hideResult(); lastHit = null; lastWarn = null; unkCount = 0; $('#manualIn').value = ''; resumeLoop(); }
+function nextScan() { hideResult(); lastHit = null; lastWarn = null; unkCount = 0; $('#manualIn').value = ''; renderSugg(); resumeLoop(); }
 function feedback() {
   try { navigator.vibrate && navigator.vibrate(120); } catch (e) {}
   try { if (!audioCtx) return; if (audioCtx.state === 'suspended') audioCtx.resume(); const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.value = 1320; g.gain.value = 0.15; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.12); } catch (e) {}
@@ -1623,11 +1684,22 @@ function renderKunden() {
       <div class="bar"><i style="width:${(100 * g.done / g.ix.length).toFixed(0)}%"></i><i class="da" style="width:${(100 * g.ready / g.ix.length).toFixed(0)}%"></i></div>
       ${g.ix.filter((i) => !onlyOpen || !isDone(i)).map((i) => { const it = items[i]; const d = isDone(i); const q = it.qty || 1; const ready = !d && (it.da || 0) >= q; const part = !d && !ready && ((it.done || 0) > 0 || (it.da || 0) > 0); const k = Matcher.norm(it.nummer); const p = memory.parts[k]; const mk = brandOf(it);
         return `<div class="item ${d ? 'done' : ''} ${ready ? 'ready' : ''} ${part ? 'part' : ''}" data-id="${esc(it.id)}"><div class="chk">${d ? '✓' : ready ? '📦' : part ? ((it.done || 0) + '/' + q) : ''}</div>
-          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ abgegeben · ${esc(it.by)} · ${hhmm(it.at)}${it.ph ? ' 📷' : ''}</div>` : ''}${!d && (it.da || 0) > 0 && it.daBy ? `<div class="who da">📦 ${q > 1 ? (it.da + '/' + q + ' ') : ''}da · ${esc(it.daBy)} · ${hhmm(it.daAt)}${it.daHow === 'tipp' ? ' ⌨' : it.daPh ? ' 📷' : ''}</div>` : ''}</div>
+          <div style="flex:1;min-width:0"><div class="nr">${esc(it.nummer)}${(it.qty || 1) > 1 ? ` <span class="muted">× ${it.qty}</span>` : ''}${mk ? `<span class="mk">${esc(mk)}</span>` : ''}${retOf(it.id) ? '<span class="rtag">↩ Retoure</span>' : ''}</div>${it.bez ? `<div class="bz">${esc(it.bez)}</div>` : ''}${(it.done || 0) > 0 && it.by ? `<div class="who">✓ abgegeben · ${esc(it.by)} · ${hhmm(it.at)}${it.ph ? ' 📷' : ''}</div>` : ''}${!d && (it.da || 0) > 0 && it.daBy ? `<div class="who da">📦 ${q > 1 ? (it.da + '/' + q + ' ') : ''}da · ${esc(it.daBy)} · ${hhmm(it.daAt)}${it.daHow === 'tipp' ? ' ⌨' : it.daHow === 'liste' ? ' ✋' : it.daPh ? ' 📷' : ''}</div>` : ''}</div>
           ${p && p.photo ? `<img class="th" data-ph="${esc(k)}" hidden alt="">` : ''}</div>`; }).join('')}
     </div>`).join('') : `<div class="muted" style="padding:20px;text-align:center">${!items.length ? 'Noch keine Liste im Pool.' : q ? 'Nichts gefunden.' : 'Keine Bestellungen an diesem Tag.'}</div>`;
-  // Nur ansehen: Abhaken geht ausschließlich im Scannen-Reiter
-  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = () => { const it = items[idxOf(el.dataset.id)]; if (it) showHistory(it); });
+  // In der Liste nur „Ist da“ (abhaken / zurücknehmen); „Abgegeben“ geht nur per Kamera-Scan
+  $('#kundenList').querySelectorAll('.item').forEach((el) => el.onclick = async () => {
+    const it = items[idxOf(el.dataset.id)]; if (!it) return; const q = it.qty || 1;
+    const opts = [];
+    if ((it.da || 0) < q) opts.push({ label: q > 1 ? `📦 Ist da (${(it.da || 0) + 1} von ${q})` : '📦 Ist da', value: 'da', cls: 'da' });
+    if ((it.da || 0) > (it.done || 0) && !it.virtual) opts.push({ label: '↺ „Ist da“ zurücknehmen', value: 'undo' });
+    opts.push({ label: '📜 Verlauf / Fotos', value: 'hist' }); opts.push({ label: 'Abbrechen', value: '' });
+    const status = (it.done || 0) >= q ? `✓ abgegeben von ${it.by} um ${hhmm(it.at)}` : (it.da || 0) > 0 ? `📦 da (${it.daBy}, ${hhmm(it.daAt)})` : 'noch offen';
+    const v = await choiceDlg(`${it.nummer} · ${it.kunde} – ${status}. „Abgegeben“ geht nur per Scan.`, opts);
+    if (v === 'da') setDa(it, Math.min((it.da || 0) + 1, q), { how: 'liste' });
+    else if (v === 'undo' && (await confirmDlg(`„Ist da“ bei ${it.nummer} (${it.kunde}) zurücknehmen? Das wird mit deinem Namen gespeichert.`))) undoDa(it);
+    else if (v === 'hist') showHistory(it);
+  });
   $('#kundenList').querySelectorAll('.kname').forEach((el) => el.onclick = (e) => { e.stopPropagation(); openKunde(el.dataset.ck); });
   $('#kundenList').querySelectorAll('.mapbtn').forEach((b) => b.onclick = (e) => { e.stopPropagation(); askRoute(b.dataset.route); });
   $('#kundenList').querySelectorAll('.hobtn').forEach((b) => b.onclick = (e) => {
@@ -1647,8 +1719,8 @@ function showHistory(it) {
   }
   const old = (e) => e.ph && e.at && dayNum(isoToday(0)) - dayNum(localDay(e.at)) > SCAN_FOTO_TAGE;
   $('#histTitle').textContent = `${it.nummer} · ${it.kunde}`;
-  $('#histBody').innerHTML = (log.length ? log.map((e) => `<div class="hrow"><div><b>${LOGTXT[e.t] || e.t}</b>${e.t === 'undo' ? ` <span class="muted">(${e.was === 'ab' ? 'Abgegeben' : 'Ist da'} zurückgenommen)</span>` : ''}<div class="muted" style="font-size:14px">${esc(e.by || '')} · ${e.at ? dayTime(e.at) : ''}${e.how === 'tipp' ? ' · ⌨ eingetippt (kein Foto)' : e.how === 'scan' ? ' · 📷 gescannt' : ''}</div></div>${e.ph && !old(e) ? `<img data-ph="${esc(e.ph)}" data-big="1" hidden alt="">` : old(e) ? '<span class="muted" style="font-size:12px">Foto gelöscht (älter als 3 Monate)</span>' : ''}</div>`).join('')
-    : '<div class="muted">Noch nichts gescannt.</div>') + '<div class="muted" style="font-size:13px;margin-top:10px">Abhaken geht nur im Reiter „Scannen“.</div>';
+  $('#histBody').innerHTML = (log.length ? log.map((e) => `<div class="hrow"><div><b>${LOGTXT[e.t] || e.t}</b>${e.t === 'undo' ? ` <span class="muted">(${e.was === 'ab' ? 'Abgegeben' : 'Ist da'} zurückgenommen)</span>` : ''}<div class="muted" style="font-size:14px">${esc(e.by || '')} · ${e.at ? dayTime(e.at) : ''}${e.how === 'tipp' ? ' · ⌨ eingetippt (kein Foto)' : e.how === 'liste' ? ' · ✋ in der Liste' : e.how === 'scan' ? ' · 📷 gescannt' : ''}</div></div>${e.ph && !old(e) ? `<img data-ph="${esc(e.ph)}" data-big="1" hidden alt="">` : old(e) ? '<span class="muted" style="font-size:12px">Foto gelöscht (älter als 3 Monate)</span>' : ''}</div>`).join('')
+    : '<div class="muted">Noch nichts gescannt.</div>') + '<div class="muted" style="font-size:13px;margin-top:10px">„Abgegeben“ geht nur per Kamera-Scan im Reiter „Scannen“.</div>';
   $('#histDlg').hidden = false; fillThumbs($('#histBody'));
   $('#histBody').querySelectorAll('img[data-big]').forEach((im) => im.onclick = () => { $('#photoTitle').textContent = it.nummer + ' · ' + it.kunde; $('#photoImg').src = im.src; $('#photoCap').textContent = ''; $('#photoNew').hidden = true; $('#photoDlg').hidden = false; });
 }
@@ -1938,8 +2010,9 @@ async function readXlsx(z) {
 function serialToIso(n) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(n) * 864e5); return d.toISOString().slice(0, 10); }
 function toIsoDate(v) {
   v = String(v || '').trim(); let m;
-  if ((m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v))) return `${m[1]}-${m[2]}-${m[3]}`;
-  if ((m = /^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2}|\d{4})$/.exec(v))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  const okD = (y, mo, d) => +y >= 1990 && +y <= 2100 && +mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31;
+  if ((m = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ]\d)/.exec(v))) return okD(m[1], m[2], m[3]) ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  if ((m = /^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2}|\d{4})$/.exec(v))) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return okD(y, m[2], m[1]) ? `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; }
   if (/^\d{5}(\.\d+)?$/.test(v) && +v > 35000 && +v < 60000) return serialToIso(+v);
   return null;
 }
