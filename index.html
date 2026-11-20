@@ -379,6 +379,12 @@
         <div class="code" id="inviteCode"></div>
         <button class="btn small" style="margin-top:8px" id="copyInvite">Kopieren</button>
       </div>
+      <div class="row" style="margin-top:10px"><button class="btn small" id="nameBtn">✏️ Namen ändern</button></div>
+      <div id="nameBox" hidden style="margin-top:10px">
+        <div class="muted" style="font-size:14px;margin-bottom:6px">Name, unter dem <b>dieses Handy</b> ab jetzt scannt (z. B. der Name des Fahrers). Alte Einträge behalten den alten Namen.</div>
+        <div class="row"><input type="text" id="nameIn" style="flex:2" autocomplete="off"><button class="btn small primary" id="nameSave" style="flex:1">Speichern</button></div>
+        <div id="nameMsg" style="margin-top:6px;font-size:14px"></div>
+      </div>
       <div class="row" style="margin-top:10px"><button class="btn small" id="renewBtn">Zugang erneuern</button><button class="btn small ghost" id="logoutBtn">Abmelden (dieses Handy)</button></div>
       <div id="renewBox" hidden style="margin-top:12px">
         <div class="muted" style="font-size:14px;margin-bottom:6px">Neuen <b>GitHub-Token</b> (beginnt mit github_pat_) <b>oder</b> neuen <b>Einladungscode</b> (beginnt mit TS1.) einfügen. Alle Listen und Haken bleiben erhalten.</div>
@@ -682,6 +688,11 @@ function undoStep(it) {
   if (n > 0) checks[it.id] = { ...c, n: n - 1, by: cfg.name, at: now, ph: '', how: '', da, log: addLog(c, { t: 'undo', was: 'ab', by: cfg.name, at: now }) };
   else if (da > 0) checks[it.id] = { ...c, da: da - 1, daBy: cfg.name, daAt: now, daPh: '', daHow: '', log: addLog(c, { t: 'undo', was: 'da', by: cfg.name, at: now }) };
   else return;
+  dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
+}
+function undoAb(it) {
+  const c = checks[it.id] || {}; const now = nowIso(); const n = c.n || 0; if (n <= 0) return;
+  checks[it.id] = { ...c, n: n - 1, by: cfg.name, at: now, ph: '', how: '', da: Math.max(c.da || 0, n), log: addLog(c, { t: 'undo', was: 'ab', by: cfg.name, at: now, how: 'liste' }) };
   dirty.checks = (dirty.checks || 0) + 1; persist(); refresh(); syncSoon();
 }
 function undoDa(it) {
@@ -1214,7 +1225,7 @@ function renderResult() {
       ${canAb ? '<button class="btn ok" id="rDone">✓ Abgegeben</button>' : ''}
       <button class="btn" id="rNext">Weiter</button>
     </div>
-    ${((it.da || 0) > 0 || (it.done || 0) > 0) && !it.virtual ? '<button class="btn small" style="width:100%;margin-top:8px" id="rUndo">↺ Rückgängig (letzten Schritt)</button>' : ''}
+    ${((it.da || 0) > 0 || (it.done || 0) > 0) && !it.virtual ? '<button class="btn small" style="width:100%;margin-top:8px" id="rUndo">↺ Falsch gescannt – letzten Schritt löschen</button>' : ''}
     <button class="btn small ${eans.length ? 'bcok' : 'bcmiss'}" style="width:100%;margin-top:8px" id="rBc">🏷 ${eans.length ? 'Barcode ✓ (' + eans.length + ') – weiteren scannen' : 'Barcode fehlt – jetzt scannen'}</button>`;
   r.hidden = false; fillThumbs(r);
   $('#rBc').onclick = () => startBarcode(k, it.nummer, it, 'result');
@@ -1232,7 +1243,7 @@ function renderResult() {
   if ($('#rUndo')) $('#rUndo').onclick = async () => {
     const x = items[idxOf(current.sel)]; if (!x) return;
     const what = (x.done || 0) > 0 ? '„Abgegeben“' : '„Ist da“';
-    if (!(await confirmDlg(`${what} bei ${x.nummer} (${x.kunde}) zurücknehmen? Das wird mit deinem Namen gespeichert.`))) return;
+    if (!(await confirmDlg(`${what} bei ${x.nummer} (${x.kunde}) löschen? Das wird mit deinem Namen gespeichert.`))) return;
     undoStep(x); nextScan();
   };
   if ($('#rDone')) $('#rDone').onclick = () => act('ab');
@@ -1692,12 +1703,14 @@ function renderKunden() {
     const it = items[idxOf(el.dataset.id)]; if (!it) return; const q = it.qty || 1;
     const opts = [];
     if ((it.da || 0) < q) opts.push({ label: q > 1 ? `📦 Ist da (${(it.da || 0) + 1} von ${q})` : '📦 Ist da', value: 'da', cls: 'da' });
-    if ((it.da || 0) > (it.done || 0) && !it.virtual) opts.push({ label: '↺ „Ist da“ zurücknehmen', value: 'undo' });
+    if ((it.da || 0) > (it.done || 0) && !it.virtual) opts.push({ label: '↺ „Ist da“ löschen', value: 'undo' });
+    if ((it.done || 0) > 0 && !it.virtual) opts.push({ label: '↺ „Abgegeben“ löschen', value: 'undoab' });
     opts.push({ label: '📜 Verlauf / Fotos', value: 'hist' }); opts.push({ label: 'Abbrechen', value: '' });
     const status = (it.done || 0) >= q ? `✓ abgegeben von ${it.by} um ${hhmm(it.at)}` : (it.da || 0) > 0 ? `📦 da (${it.daBy}, ${hhmm(it.daAt)})` : 'noch offen';
     const v = await choiceDlg(`${it.nummer} · ${it.kunde} – ${status}. „Abgegeben“ geht nur per Scan.`, opts);
     if (v === 'da') setDa(it, Math.min((it.da || 0) + 1, q), { how: 'liste' });
     else if (v === 'undo' && (await confirmDlg(`„Ist da“ bei ${it.nummer} (${it.kunde}) zurücknehmen? Das wird mit deinem Namen gespeichert.`))) undoDa(it);
+    else if (v === 'undoab' && (await confirmDlg(`„Abgegeben“ bei ${it.nummer} (${it.kunde}) löschen? Das Teil steht danach wieder auf „Ist da“. Das wird mit deinem Namen gespeichert.`))) undoAb(it);
     else if (v === 'hist') showHistory(it);
   });
   $('#kundenList').querySelectorAll('.kname').forEach((el) => el.onclick = (e) => { e.stopPropagation(); openKunde(el.dataset.ck); });
@@ -1709,8 +1722,17 @@ function renderKunden() {
   fillThumbs($('#kundenList'));
 }
 
+// ---------- Namen auf diesem Handy ändern ----------
+$('#nameBtn').onclick = () => { const b = $('#nameBox'); b.hidden = !b.hidden; if (!b.hidden) { $('#nameIn').value = cfg ? cfg.name : ''; $('#nameMsg').textContent = ''; $('#nameIn').focus(); } };
+$('#nameSave').onclick = () => {
+  const n = $('#nameIn').value.trim().replace(/\s+/g, ' ');
+  if (n.length < 2) { $('#nameMsg').innerHTML = '<span class="err-msg">Bitte einen Namen eingeben.</span>'; return; }
+  if (n.length > 30) { $('#nameMsg').innerHTML = '<span class="err-msg">Der Name ist zu lang.</span>'; return; }
+  const old = cfg.name; cfg.name = n; store.set('cfg', cfg);
+  $('#nameMsg').innerHTML = `<span class="ok-msg">Gespeichert ✓ – ab jetzt steht „${esc(n)}“ statt „${esc(old)}“.</span>`; refresh();
+};
 // ---------- Verlauf eines Teils (wer, wann, Foto) ----------
-const LOGTXT = { da: '📦 Ist da', ab: '✓ Abgegeben', undo: '↺ Rückgängig' };
+const LOGTXT = { da: '📦 Ist da', ab: '✓ Abgegeben', undo: '↺ Gelöscht' };
 function showHistory(it) {
   let log = (it.log || []).slice();
   if (!log.length) { // alte Einträge ohne Verlauf
@@ -1719,7 +1741,7 @@ function showHistory(it) {
   }
   const old = (e) => e.ph && e.at && dayNum(isoToday(0)) - dayNum(localDay(e.at)) > SCAN_FOTO_TAGE;
   $('#histTitle').textContent = `${it.nummer} · ${it.kunde}`;
-  $('#histBody').innerHTML = (log.length ? log.map((e) => `<div class="hrow"><div><b>${LOGTXT[e.t] || e.t}</b>${e.t === 'undo' ? ` <span class="muted">(${e.was === 'ab' ? 'Abgegeben' : 'Ist da'} zurückgenommen)</span>` : ''}<div class="muted" style="font-size:14px">${esc(e.by || '')} · ${e.at ? dayTime(e.at) : ''}${e.how === 'tipp' ? ' · ⌨ eingetippt (kein Foto)' : e.how === 'liste' ? ' · ✋ in der Liste' : e.how === 'scan' ? ' · 📷 gescannt' : ''}</div></div>${e.ph && !old(e) ? `<img data-ph="${esc(e.ph)}" data-big="1" hidden alt="">` : old(e) ? '<span class="muted" style="font-size:12px">Foto gelöscht (älter als 3 Monate)</span>' : ''}</div>`).join('')
+  $('#histBody').innerHTML = (log.length ? log.map((e) => `<div class="hrow"><div><b>${LOGTXT[e.t] || e.t}</b>${e.t === 'undo' ? ` <span class="muted">(„${e.was === 'ab' ? 'Abgegeben' : 'Ist da'}“ gelöscht)</span>` : ''}<div class="muted" style="font-size:14px">${esc(e.by || '')} · ${e.at ? dayTime(e.at) : ''}${e.how === 'tipp' ? ' · ⌨ eingetippt (kein Foto)' : e.how === 'liste' ? ' · ✋ in der Liste' : e.how === 'scan' ? ' · 📷 gescannt' : ''}</div></div>${e.ph && !old(e) ? `<img data-ph="${esc(e.ph)}" data-big="1" hidden alt="">` : old(e) ? '<span class="muted" style="font-size:12px">Foto gelöscht (älter als 3 Monate)</span>' : ''}</div>`).join('')
     : '<div class="muted">Noch nichts gescannt.</div>') + '<div class="muted" style="font-size:13px;margin-top:10px">„Abgegeben“ geht nur per Kamera-Scan im Reiter „Scannen“.</div>';
   $('#histDlg').hidden = false; fillThumbs($('#histBody'));
   $('#histBody').querySelectorAll('img[data-big]').forEach((im) => im.onclick = () => { $('#photoTitle').textContent = it.nummer + ' · ' + it.kunde; $('#photoImg').src = im.src; $('#photoCap').textContent = ''; $('#photoNew').hidden = true; $('#photoDlg').hidden = false; });
